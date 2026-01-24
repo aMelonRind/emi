@@ -14,12 +14,14 @@ import dev.emi.emi.api.stack.EmiStack;
 public class TreeCost {
 	public Map<EmiIngredient, FlatMaterialCost> costs = Maps.newHashMap();
 	public Map<EmiIngredient, ChanceMaterialCost> chanceCosts = Maps.newHashMap();
+	public Map<EmiStack, FlatMaterialCost> invs = Maps.newHashMap();
 	public Map<EmiStack, FlatMaterialCost> remainders = Maps.newHashMap();
 	public Map<EmiStack, ChanceMaterialCost> chanceRemainders = Maps.newHashMap();
 
 	public void calculate(MaterialNode node, long batches) {
 		costs.clear();
 		chanceCosts.clear();
+		invs.clear();
 		remainders.clear();
 		chanceRemainders.clear();
 		calculateCost(node, batches * node.amount, ChanceState.DEFAULT, false);
@@ -28,11 +30,12 @@ public class TreeCost {
 	public void calculateProgress(MaterialNode node, long batches, EmiPlayerInventory inventory) {
 		costs.clear();
 		chanceCosts.clear();
+		invs.clear();
 		remainders.clear();
 		chanceRemainders.clear();
 		for (EmiStack stack : inventory.inventory.values()) {
 			stack = stack.copy();
-			remainders.put(stack, new FlatMaterialCost(stack, stack.getAmount()));
+			invs.put(stack, new FlatMaterialCost(stack, stack.getAmount()));
 		}
 		calculateCost(node, batches * node.amount, ChanceState.DEFAULT, true);
 	}
@@ -122,25 +125,33 @@ public class TreeCost {
 		return given;
 	}
 
-	private long getRemainder(EmiStack stack, long desired, boolean catalyst) {
-		FlatMaterialCost remainder = remainders.get(stack);
-		if (remainder != null) {
-			if (remainder.amount >= desired) {
+	private long getFrom(Map<EmiStack, FlatMaterialCost> collection, EmiStack stack, long desired, boolean catalyst) {
+		FlatMaterialCost value = collection.get(stack);
+		if (value != null) {
+			if (value.amount >= desired) {
 				if (!catalyst) {
-					remainder.amount -= desired;
-					if (remainder.amount == 0) {
-						remainders.remove(stack);
+					value.amount -= desired;
+					if (value.amount == 0) {
+						collection.remove(stack);
 					}
 				}
 				return desired;
 			} else {
 				if (!catalyst) {
-					remainders.remove(stack);
+					collection.remove(stack);
 				}
-				return remainder.amount;
+				return value.amount;
 			}
 		}
 		return 0;
+	}
+
+	private long getInventory(EmiStack stack, long desired, boolean catalyst) {
+		return getFrom(invs, stack, desired, catalyst);
+	}
+
+	private long getRemainder(EmiStack stack, long desired, boolean catalyst) {
+		return getFrom(remainders, stack, desired, catalyst);
 	}
 
 	private void complete(MaterialNode node) {
@@ -175,18 +186,22 @@ public class TreeCost {
 		long original = amount;
 		List<EmiStack> ingredientStacks = node.ingredient.getEmiStacks();
 		for (int i = 0; i < ingredientStacks.size(); i++) {
+			amount -= getInventory(ingredientStacks.get(i), amount, catalyst);
+			// can't really understand what's happening here in chanced, I might've broken it.
 			if (chance.chanced()) {
 				double desired = amount * chance.chance();
 				double given = getChancedRemainder(ingredientStacks.get(i), desired, catalyst, chance);
 				if (given > 0) {
 					double scaled = given / chance.chance();
-					amount -= (long) scaled;
+					node.usedRemainder = (long) scaled;
+					amount -= node.usedRemainder;
 					if (amount > 0) {
 						chance = new ChanceState((float) ((amount - (scaled % 1)) * chance.chance() / amount), true);
 					}
 				}
 			} else {
-				amount -= getRemainder(ingredientStacks.get(i), amount, catalyst);
+				node.usedRemainder = getRemainder(ingredientStacks.get(i), amount, catalyst);
+				amount -= node.usedRemainder;
 			}
 		}
 		if (amount == 0) {

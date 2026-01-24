@@ -261,7 +261,7 @@ public class EmiFavorites {
 				batches.removeLong(node.recipe);
 			}
 			batches.put(node.recipe, amount);
-			amount = node.totalNeeded;
+			amount = node.totalNeeded + node.usedRemainder;
 			if (amounts.containsKey(node.recipe)) {
 				// Remove?
 				amount += amounts.getLong(node.recipe);
