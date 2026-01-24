@@ -225,7 +225,11 @@ public class EmiRenderHelper {
 	}
 
 	public static Text getAmountText(EmiIngredient stack, long amount) {
-		if (stack.isEmpty() || amount == 0) {
+		return getAmountText(stack, amount, false);
+	}
+
+	public static Text getAmountText(EmiIngredient stack, long amount, boolean force) {
+		if (!force && (stack.isEmpty() || amount == 0)) {
 			return EMPTY_TEXT;
 		}
 		if (stack.getEmiStacks().get(0).getKey() instanceof Fluid) {
@@ -235,7 +239,11 @@ public class EmiRenderHelper {
 	}
 
 	public static Text getAmountText(EmiIngredient stack, double amount) {
-		if (stack.isEmpty() || amount == 0) {
+		return getAmountText(stack, amount, false);
+	}
+
+	public static Text getAmountText(EmiIngredient stack, double amount, boolean force) {
+		if (!force && (stack.isEmpty() || amount == 0)) {
 			return EMPTY_TEXT;
 		}
 		if (stack.getEmiStacks().get(0).getKey() instanceof Fluid) {

@@ -194,8 +194,8 @@ public class EmiFavorite implements EmiIngredient, Batchable {
 			list.addAll(super.getTooltip());
 
 			long diff = total - amount;
-			list.add(EmiTooltipComponents.of(EmiPort.translatable("tooltip.emi.synfav.remaining", EmiRenderHelper.getAmountText(stack, amount)).formatted(Formatting.GRAY)));
-			list.add(EmiTooltipComponents.of(EmiPort.translatable("tooltip.emi.synfav.obtained", EmiRenderHelper.getAmountText(stack, diff), EmiRenderHelper.getAmountText(stack, total)).formatted(Formatting.GRAY)));
+			list.add(EmiTooltipComponents.of(EmiPort.translatable("tooltip.emi.synfav.remaining", EmiRenderHelper.getAmountText(stack, amount, true)).formatted(Formatting.GRAY)));
+			list.add(EmiTooltipComponents.of(EmiPort.translatable("tooltip.emi.synfav.obtained", EmiRenderHelper.getAmountText(stack, diff, true), EmiRenderHelper.getAmountText(stack, total, true)).formatted(Formatting.GRAY)));
 			if (batches != amount) {
 				list.add(EmiTooltipComponents.of(EmiPort.translatable("tooltip.emi.synfav.batches_remaining", batches).formatted(Formatting.GRAY)));
 			}
