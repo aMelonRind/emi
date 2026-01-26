@@ -191,9 +191,13 @@ public class EmiRecipes {
 				}
 				List<EmiRecipe> cRecipes = byCategory.get(category);
 				Comparator<EmiRecipe> sort = EmiRecipeCategoryProperties.getSort(category);
-				if (doSort && sort != EmiRecipeSorting.none()) {
-					cRecipes = cRecipes.stream().sorted(sort).collect(Collectors.toList());
-					EmiRecipeSorter.clear();
+				if (doSort) {
+					if (sort != EmiRecipeSorting.none()) {
+						cRecipes = cRecipes.stream().sorted(sort).collect(Collectors.toList());
+						EmiRecipeSorter.clear();
+					} else {
+						cRecipes = MeloRecipeSorter.sort(category, cRecipes);
+					}
 				}
 				byCategory.put(category, cRecipes);
 				for (EmiRecipe recipe : cRecipes) {
@@ -207,6 +211,9 @@ public class EmiRecipes {
 						byOutput.computeIfAbsent(i.copy(), b -> Sets.newLinkedHashSet()).add(recipe);
 					});
 				}
+			}
+			if (doSort) {
+				MeloRecipeSorter.logTotalTime();
 			}
 			for (EmiStack key : byInput.keySet()) {
 				Set<EmiRecipe> r = byInput.getOrDefault(key, null);
