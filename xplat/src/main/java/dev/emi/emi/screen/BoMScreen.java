@@ -1,5 +1,6 @@
 package dev.emi.emi.screen;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
@@ -223,11 +224,12 @@ public class BoMScreen extends Screen {
 			if (hasRemainders) {
 				context.drawCenteredText(EmiPort.translatable("emi.leftovers"), 0, cy - 16 + 40);
 			}
+			List<AmountRenderInfo> amounts = new ArrayList<>();
 			for (Cost cost : costs) {
-				cost.render(context);
+				cost.render(context, amounts);
 			}
 			for (Node node : nodes) {
-				node.render(context, mx, my, delta);
+				node.render(context, mx, my, delta, amounts);
 			}
 			int color = -1;
 			if (batches.contains(mx, my)) {
@@ -242,6 +244,14 @@ public class BoMScreen extends Screen {
 			context.drawTexture(EmiRenderHelper.WIDGETS, mode.x(), mode.y(), BoM.craftingMode ? 16 : 0, 146, mode.width(), mode.height());
 			context.setColor(1f, 1f, 1f, 1f);
 			batcher.draw();
+
+			// batch render amount after batcher
+			context.push();
+			context.matrices().translate(17, 9, 200);
+			for (AmountRenderInfo info : amounts) {
+				info.render(context);
+			}
+			context.pop();
 		} else {
 			context.drawCenteredText(EmiPort.translatable("emi.tree_welcome", EmiRenderHelper.getEmiText()), 0, -72);
 			context.drawCenteredText(EmiPort.translatable("emi.no_tree"), 0, -48);
@@ -560,9 +570,10 @@ public class BoMScreen extends Screen {
 			this.remainder = remainder;
 		}
 
-		public void render(EmiDrawContext context) {
+		public void render(EmiDrawContext context, List<AmountRenderInfo> amounts) {
 			batcher.render(cost.ingredient, context.raw(), x, y, 0, ~(EmiIngredient.RENDER_AMOUNT | EmiIngredient.RENDER_REMAINDER));
-			EmiRenderHelper.renderAmount(context, x, y, getAmountText());
+//			EmiRenderHelper.renderAmount(context, x, y, getAmountText());
+			amounts.add(new AmountRenderInfo(x, y, getAmountText()));
 		}
 
 		public Text getAmountText() {
@@ -671,7 +682,7 @@ public class BoMScreen extends Screen {
 			midOffset = tw / -2;
 		}
 
-		public void render(EmiDrawContext context, int mouseX, int mouseY, float delta) {
+		public void render(EmiDrawContext context, int mouseX, int mouseY, float delta, List<AmountRenderInfo> amounts) {
 			if (parent != null) {
 				context.push();
 
@@ -726,7 +737,8 @@ public class BoMScreen extends Screen {
 			}
 			context.setColor(1f, 1f, 1f, 1f);
 			batcher.render(node.ingredient, context.raw(), x + xo - 8 + midOffset, y - 8, 0);
-			EmiRenderHelper.renderAmount(context, x + xo - 8 + midOffset, y - 8, getAmountText());
+//			EmiRenderHelper.renderAmount(context, x + xo - 8 + midOffset, y - 8, getAmountText());
+			amounts.add(new AmountRenderInfo(x + xo - 8 + midOffset, y - 8, getAmountText()));
 		}
 
 		public void setColor(EmiDrawContext context, MaterialNode node, boolean chanced, boolean hovered) {
@@ -863,6 +875,13 @@ public class BoMScreen extends Screen {
 				this.left = left;
 				this.right = right;
 			}
+		}
+	}
+
+	private static record AmountRenderInfo(int x, int y, Text amount) {
+		public void render(EmiDrawContext context) {
+			int tx = x - Math.min(14, EmiRenderHelper.CLIENT.textRenderer.getWidth(amount));
+			context.drawTextWithShadow(amount, tx, y, -1);
 		}
 	}
 }
