@@ -6,6 +6,8 @@ import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import dev.emi.emi.screen.TomSimpleStorageCompat;
+import net.minecraft.screen.ScreenHandler;
 import org.jetbrains.annotations.ApiStatus;
 
 import com.google.common.collect.Lists;
@@ -36,6 +38,7 @@ public class EmiPlayerInventory {
 	private final Comparison none = Comparison.DEFAULT_COMPARISON;
 	private final Comparison strict = EmiPort.compareStrict();
 	public Map<EmiStack, EmiStack> inventory = Maps.newHashMap();
+	public Map<EmiStack, EmiStack> trueInventory = null;
 	
 	@Deprecated
 	@ApiStatus.Internal
@@ -71,8 +74,25 @@ public class EmiPlayerInventory {
 		}
 		HandledScreen<?> screen = EmiApi.getHandledScreen();
 		if (screen != null && screen.getScreenHandler() != null) {
-			if (screen.getScreenHandler().getCursorStack() != null) {
-				addStack(screen.getScreenHandler().getCursorStack());
+			ScreenHandler handler = screen.getScreenHandler();
+			if (TomSimpleStorageCompat.isTomsTerminal(screen)) {
+				int toTrim = TomSimpleStorageCompat.getTomsStoredSize(handler);
+				if (toTrim > 0) {
+					// terminal that doesn't support auto crafting shouldn't count towards crafting mode.
+					Map<EmiStack, EmiStack> temp = inventory;
+					inventory = Maps.newHashMap();
+					for (EmiStack stack : stacks.subList(0, Math.max(0, stacks.size() - toTrim))) {
+						addStack(stack);
+					}
+					if (handler.getCursorStack() != null) {
+						addStack(handler.getCursorStack());
+					}
+					trueInventory = inventory;
+					inventory = temp;
+				}
+			}
+			if (handler.getCursorStack() != null) {
+				addStack(handler.getCursorStack());
 			}
 		}
 	}
@@ -210,5 +230,9 @@ public class EmiPlayerInventory {
 			}
 		}
 		return true;
+	}
+
+	public Map<EmiStack, EmiStack> getTrueInventory() {
+		return trueInventory != null ? trueInventory : inventory;
 	}
 }

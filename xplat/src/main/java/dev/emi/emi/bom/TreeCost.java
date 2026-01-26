@@ -33,7 +33,7 @@ public class TreeCost {
 		invs.clear();
 		remainders.clear();
 		chanceRemainders.clear();
-		for (EmiStack stack : inventory.inventory.values()) {
+		for (EmiStack stack : inventory.getTrueInventory().values()) {
 			stack = stack.copy();
 			invs.put(stack, new FlatMaterialCost(stack, stack.getAmount()));
 		}
