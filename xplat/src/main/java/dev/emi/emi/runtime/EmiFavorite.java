@@ -2,6 +2,7 @@ package dev.emi.emi.runtime;
 
 import java.util.List;
 
+import dev.emi.emi.input.EmiInput;
 import org.jetbrains.annotations.Nullable;
 
 import com.google.common.collect.Lists;
@@ -185,7 +186,8 @@ public class EmiFavorite implements EmiIngredient, Batchable {
 			}
 			//context.fill(x - 1, y - 1, 18, 18, 0x44000000 | color);
 			stack.render(context.raw(), x, y, delta, flags & (~EmiIngredient.RENDER_AMOUNT));
-			MicroTextRenderer.render(context, amount, stack.getEmiStacks().get(0) instanceof FluidEmiStack, 18, x + 17, y + 17, color);
+			boolean showBatches = recipe != null && EmiInput.isShiftDown();
+			MicroTextRenderer.render(context, showBatches ? batches : amount, stack.getEmiStacks().get(0) instanceof FluidEmiStack && !showBatches, 18, x + 17, y + 17, color);
 		}
 
 		@Override
