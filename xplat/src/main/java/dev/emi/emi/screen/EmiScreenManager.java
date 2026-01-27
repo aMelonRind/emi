@@ -899,7 +899,6 @@ public class EmiScreenManager {
 				}
 				context.pop();
 			}
-			TomSimpleStorageCompat.renderSlotOverlays(hs, context, query, synfavs);
 			context.pop();
 		}
 	}
