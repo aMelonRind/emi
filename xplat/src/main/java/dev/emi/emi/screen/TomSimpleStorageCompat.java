@@ -93,15 +93,17 @@ public class TomSimpleStorageCompat {
         boolean doSynfav = !doQuery && BoM.craftingMode && BoM.tree != null;
         if (!doQuery && !doSynfav) return;
 //        context.drawText(Text.literal("Conditions OK, Drawing highlights"), 0, debugY += 10);
+        // register highlight sorter
+        boolean modified = modifiedHandler.containsKey(sh);
+        modifiedHandler.put(sh, doQuery ? query::test : synfavs::contains);
+        if (!modified) {
+            modifySort(screen, sh);
+        }
+        // draw highlights (query isn't actually highlight, it darkens, so it's reversed)
         context.push();
         context.matrices().translate(-1, -1, 300);
         Predicate<EmiStack> predicate = doQuery ? Predicate.not(query::test) : synfavs::contains;
         int color = doQuery ? 0x77000000 : 0x7700BBFF;
-        boolean modified = modifiedHandler.containsKey(sh);
-        modifiedHandler.put(sh, predicate);
-        if (!modified) {
-            modifySort(screen, sh);
-        }
 //        int debugCount = 0;
         try {
             for (Object slot : (List<?>) slotListF.get(sh)) {
