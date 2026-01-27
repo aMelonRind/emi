@@ -154,13 +154,14 @@ public class TreeCost {
 		return getFrom(remainders, stack, desired, catalyst);
 	}
 
-	private void complete(MaterialNode node) {
+	private void complete(MaterialNode node, long usedRemainder) {
 		node.progress = ProgressState.COMPLETED;
 		node.totalNeeded = 0;
 		node.neededBatches = 0;
+		node.usedRemainder = usedRemainder;
 		if (node.children != null) {
 			for (MaterialNode child : node.children) {
-				complete(child);
+				complete(child, 0);
 			}
 		}
 	}
@@ -170,6 +171,7 @@ public class TreeCost {
 			node.progress = ProgressState.UNSTARTED;
 			node.totalNeeded = 0;
 			node.neededBatches = 0;
+			node.usedRemainder = 0;
 		}
 		boolean catalyst = node.catalyst;
 		if (catalyst) {
@@ -184,6 +186,7 @@ public class TreeCost {
 			return;
 		}
 		long original = amount;
+		long usedRemainder = 0;
 		List<EmiStack> ingredientStacks = node.ingredient.getEmiStacks();
 		for (int i = 0; i < ingredientStacks.size(); i++) {
 			amount -= getInventory(ingredientStacks.get(i), amount, catalyst);
@@ -193,25 +196,26 @@ public class TreeCost {
 				double given = getChancedRemainder(ingredientStacks.get(i), desired, catalyst, chance);
 				if (given > 0) {
 					double scaled = given / chance.chance();
-					node.usedRemainder = (long) scaled;
-					amount -= node.usedRemainder;
+					usedRemainder = (long) scaled;
+					amount -= usedRemainder;
 					if (amount > 0) {
 						chance = new ChanceState((float) ((amount - (scaled % 1)) * chance.chance() / amount), true);
 					}
 				}
 			} else {
-				node.usedRemainder = getRemainder(ingredientStacks.get(i), amount, catalyst);
-				amount -= node.usedRemainder;
+				usedRemainder = getRemainder(ingredientStacks.get(i), amount, catalyst);
+				amount -= usedRemainder;
 			}
 		}
 		if (amount == 0) {
 			if (trackProgress) {
-				complete(node);
+				complete(node, usedRemainder);
 			}
 			return;
 		}
 		if (trackProgress && amount != original) {
 			node.progress = ProgressState.PARTIAL;
+			node.usedRemainder = usedRemainder;
 		}
 		
 		long effectiveCrafts = amount;
