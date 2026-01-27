@@ -5,13 +5,17 @@ import dev.emi.emi.bom.BoM;
 import dev.emi.emi.runtime.EmiDrawContext;
 import dev.emi.emi.runtime.EmiLog;
 import dev.emi.emi.search.EmiSearch;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.item.ItemStack;
 import net.minecraft.screen.ScreenHandler;
+import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Field;
 import java.util.*;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 public class TomSimpleStorageCompat {
@@ -32,7 +36,8 @@ public class TomSimpleStorageCompat {
 
     private static int searchSession = 0;
 
-    private static final WeakHashMap<ScreenHandler, SortInfo> modifiedHandler = new WeakHashMap<>();
+    private static final WeakHashMap<ScreenHandler, Integer> modifiedHandler = new WeakHashMap<>();
+    private static @Nullable Function<EmiStack, Integer> extractor;
 
     static {
         try {
@@ -97,20 +102,32 @@ public class TomSimpleStorageCompat {
 //        context.drawText(Text.literal("Handler OK, Checking Conditions"), 0, debugY += 10);
         boolean doQuery = query != null;
         boolean doSynfav = !doQuery && BoM.craftingMode && BoM.tree != null;
-        if (!doQuery && !doSynfav) return;
+        if (!doQuery && !doSynfav) {
+            extractor = null;
+            return;
+        }
 //        context.drawText(Text.literal("Conditions OK, Drawing highlights"), 0, debugY += 10);
         // register highlight sorter
-        SortInfo info = modifiedHandler.get(sh);
-        boolean fresh = info == null;
+        @Nullable
+        Integer session = modifiedHandler.get(sh);
+        boolean fresh = session == null;
         if (fresh) {
-            info = new SortInfo();
-            modifiedHandler.put(sh, info);
+            modifiedHandler.put(sh, searchSession);
         }
-        info.predicate = doQuery ? query::test : synfavs::contains;
+        if (doQuery) {
+            extractor = s -> query.test(s) ? -1 : 0;
+        } else {
+            Object2IntMap<EmiStack> map = new Object2IntOpenHashMap<>(synfavs.size());
+            int counter = -Integer.MAX_VALUE;
+            for (EmiStack stack : synfavs) {
+                map.put(stack, counter++);
+            }
+            extractor = map::getInt;
+        }
         if (fresh) {
             modifySort(screen, sh);
-        } else if (info.session != searchSession) {
-            info.session = searchSession;
+        } else if (session != searchSession) {
+            modifiedHandler.put(sh, searchSession);
             markTerminalDirty(screen);
         }
         // draw highlights (query isn't actually highlight, it darkens, so it's reversed)
@@ -142,7 +159,7 @@ public class TomSimpleStorageCompat {
         try {
             @SuppressWarnings("unchecked")
             List<Object> orig = (List<Object>) itemListClientSortedF.get(handler);
-            itemListClientSortedF.set(handler, new SynfavSortedList(handler, orig));
+            itemListClientSortedF.set(handler, new SynfavSortedList(orig));
             refreshItemListF.setBoolean(screen, true);
         } catch (Throwable ignore) {}
     }
@@ -154,39 +171,25 @@ public class TomSimpleStorageCompat {
     }
 
     private static class SynfavSortedList extends ArrayList<Object> {
-        private final ScreenHandler key;
-
-        public SynfavSortedList(ScreenHandler key, List<Object> orig) {
+        public SynfavSortedList(List<Object> orig) {
             super(orig);
-            this.key = key;
         }
 
         @Override
         public void sort(Comparator<? super Object> c) {
-            SortInfo info = modifiedHandler.get(this.key);
-            if (info == null) {
-                // impossible, but just to be sure
+            Function<EmiStack, Integer> extractor = TomSimpleStorageCompat.extractor;
+            if (extractor == null) {
+                // not active
                 super.sort(c);
                 return;
             }
-            Predicate<EmiStack> predicate = info.predicate;
             Map<Object, Integer> cache = new IdentityHashMap<>(this.size());
             super.sort(Comparator.comparing(o -> cache.computeIfAbsent(o, k -> {
                 try {
-                    return predicate.test(EmiStack.of((ItemStack) stackF.get(k))) ? 0 : 1;
+                    return extractor.apply(EmiStack.of((ItemStack) stackF.get(k)));
                 } catch (Throwable ignore) {}
-                return 1;
+                return 0;
             })).thenComparing(c));
-        }
-    }
-
-    private static class SortInfo {
-        int session;
-        Predicate<EmiStack> predicate;
-
-        SortInfo() {
-            this.session = searchSession;
-            this.predicate = null;
         }
     }
 }
