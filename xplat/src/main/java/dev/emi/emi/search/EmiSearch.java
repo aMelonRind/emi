@@ -22,7 +22,6 @@ import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiLog;
 import dev.emi.emi.runtime.EmiReloadLog;
 import dev.emi.emi.screen.EmiScreenManager;
-import dev.emi.emi.screen.TomSimpleStorageCompat;
 import net.minecraft.client.resource.language.I18n;
 import net.minecraft.client.search.SuffixArray;
 import net.minecraft.enchantment.Enchantment;
@@ -264,8 +263,6 @@ public class EmiSearch {
 			try {
 				CompiledQuery compiled = new CompiledQuery(query);
 				compiledQuery = compiled;
-				// safe to call in worker
-				TomSimpleStorageCompat.onQueryChange();
 				if (compiled.isEmpty()) {
 					apply(this, source);
 					return;
