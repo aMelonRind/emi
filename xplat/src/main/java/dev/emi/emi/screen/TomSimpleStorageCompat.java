@@ -30,7 +30,9 @@ public class TomSimpleStorageCompat {
 
     private static boolean ok = false;
 
-    private static final WeakHashMap<ScreenHandler, Predicate<EmiStack>> modifiedHandler = new WeakHashMap<>();
+    private static int searchSession = 0;
+
+    private static final WeakHashMap<ScreenHandler, SortInfo> modifiedHandler = new WeakHashMap<>();
 
     static {
         try {
@@ -76,6 +78,10 @@ public class TomSimpleStorageCompat {
         return 0;
     }
 
+    public static void onQueryChange() {
+        searchSession++;
+    }
+
     public static void renderSlotOverlays(
             HandledScreen<?> screen,
             EmiDrawContext context,
@@ -94,10 +100,18 @@ public class TomSimpleStorageCompat {
         if (!doQuery && !doSynfav) return;
 //        context.drawText(Text.literal("Conditions OK, Drawing highlights"), 0, debugY += 10);
         // register highlight sorter
-        boolean modified = modifiedHandler.containsKey(sh);
-        modifiedHandler.put(sh, doQuery ? query::test : synfavs::contains);
-        if (!modified) {
+        SortInfo info = modifiedHandler.get(sh);
+        boolean fresh = info == null;
+        if (fresh) {
+            info = new SortInfo();
+            modifiedHandler.put(sh, info);
+        }
+        info.predicate = doQuery ? query::test : synfavs::contains;
+        if (fresh) {
             modifySort(screen, sh);
+        } else if (info.session != searchSession) {
+            info.session = searchSession;
+            markTerminalDirty(screen);
         }
         // draw highlights (query isn't actually highlight, it darkens, so it's reversed)
         context.push();
@@ -133,6 +147,12 @@ public class TomSimpleStorageCompat {
         } catch (Throwable ignore) {}
     }
 
+    private static void markTerminalDirty(HandledScreen<?> screen) {
+        try {
+            refreshItemListF.setBoolean(screen, true);
+        } catch (Throwable ignore) {}
+    }
+
     private static class SynfavSortedList extends ArrayList<Object> {
         private final ScreenHandler key;
 
@@ -143,12 +163,13 @@ public class TomSimpleStorageCompat {
 
         @Override
         public void sort(Comparator<? super Object> c) {
-            Predicate<EmiStack> predicate = modifiedHandler.get(this.key);
-            if (predicate == null) {
+            SortInfo info = modifiedHandler.get(this.key);
+            if (info == null) {
                 // impossible, but just to be sure
                 super.sort(c);
                 return;
             }
+            Predicate<EmiStack> predicate = info.predicate;
             Map<Object, Integer> cache = new IdentityHashMap<>(this.size());
             super.sort(Comparator.comparing(o -> cache.computeIfAbsent(o, k -> {
                 try {
@@ -156,6 +177,16 @@ public class TomSimpleStorageCompat {
                 } catch (Throwable ignore) {}
                 return 1;
             })).thenComparing(c));
+        }
+    }
+
+    private static class SortInfo {
+        int session;
+        Predicate<EmiStack> predicate;
+
+        SortInfo() {
+            this.session = searchSession;
+            this.predicate = null;
         }
     }
 }
