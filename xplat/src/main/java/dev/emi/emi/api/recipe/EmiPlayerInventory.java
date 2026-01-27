@@ -69,6 +69,9 @@ public class EmiPlayerInventory {
 	}
 
 	public EmiPlayerInventory(List<EmiStack> stacks) {
+		for (EmiStack stack : stacks) {
+			addStack(stack);
+		}
 		HandledScreen<?> screen = EmiApi.getHandledScreen();
 		if (screen != null && screen.getScreenHandler() != null) {
 			ScreenHandler handler = screen.getScreenHandler();
@@ -79,7 +82,7 @@ public class EmiPlayerInventory {
 					Map<EmiStack, EmiStack> temp = inventory;
 					inventory = Maps.newHashMap();
 					for (EmiStack stack : stacks.subList(0, Math.max(0, stacks.size() - toTrim))) {
-						addStack(stack.copy());
+						addStack(stack);
 					}
 					if (handler.getCursorStack() != null) {
 						addStack(handler.getCursorStack());
@@ -91,9 +94,6 @@ public class EmiPlayerInventory {
 			if (handler.getCursorStack() != null) {
 				addStack(handler.getCursorStack());
 			}
-		}
-		for (EmiStack stack : stacks) {
-			addStack(stack);
 		}
 	}
 
@@ -227,22 +227,6 @@ public class EmiPlayerInventory {
 				if (!other.inventory.containsKey(stack) || !other.inventory.get(stack).isEqual(stack, comparison)) {
 					return false;
 				}
-			}
-		}
-		boolean a = trueInventory != null;
-		boolean b = other.trueInventory != null;
-		if (!a && !b) {
-			return true;
-		}
-		if (a != b) {
-			return false;
-		}
-		if (trueInventory.size() != other.trueInventory.size()) {
-			return false;
-		}
-		for (EmiStack stack : trueInventory.keySet()) {
-			if (!other.trueInventory.containsKey(stack) || !other.trueInventory.get(stack).isEqual(stack, comparison)) {
-				return false;
 			}
 		}
 		return true;
