@@ -1,6 +1,5 @@
 package dev.emi.emi.screen;
 
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
@@ -860,7 +859,7 @@ public class EmiScreenManager {
 			query = EmiSearch.compiledQuery;
 		}
 		Set<Slot> ignoredSlots = Sets.newHashSet();
-		Set<EmiStack> synfavs = new LinkedHashSet<>();
+		Set<EmiStack> synfavs = Sets.newHashSet();
 		if (BoM.craftingMode && BoM.tree != null) {
 			List<EmiFavorite.Synthetic> syntheticFavorites = EmiFavorites.syntheticFavorites;
 			for (EmiFavorite.Synthetic fav : syntheticFavorites) {
