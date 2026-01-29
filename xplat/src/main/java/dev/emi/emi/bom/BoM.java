@@ -14,6 +14,7 @@ import dev.emi.emi.EmiPort;
 import dev.emi.emi.api.EmiApi;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.EmiResolutionRecipe;
+import dev.emi.emi.api.render.EmiSlotOverlay;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.stack.TagEmiIngredient;
@@ -168,6 +169,7 @@ public class BoM {
 	public static void setGoal(EmiRecipe recipe) {
 		tree = new MaterialTree(recipe);
 		craftingMode = false;
+		EmiSlotOverlay.triggerListeners();
 	}
 
 	public static void addResolution(EmiIngredient ingredient, EmiRecipe recipe) {

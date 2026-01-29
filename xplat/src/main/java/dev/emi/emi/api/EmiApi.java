@@ -1,7 +1,10 @@
 package dev.emi.emi.api;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -26,11 +29,14 @@ import dev.emi.emi.recipe.EmiTagRecipe;
 import dev.emi.emi.registry.EmiRecipes;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiFavorite;
+import dev.emi.emi.runtime.EmiFavorites;
 import dev.emi.emi.runtime.EmiHistory;
 import dev.emi.emi.runtime.EmiSidebars;
 import dev.emi.emi.screen.BoMScreen;
 import dev.emi.emi.screen.EmiScreenManager;
 import dev.emi.emi.screen.RecipeScreen;
+import dev.emi.emi.search.EmiSearch;
+import dev.emi.emi.search.EmiSearch.CompiledQuery;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
@@ -67,6 +73,55 @@ public class EmiApi {
 
 	public static boolean isSearchFocused() {
 		return EmiScreenManager.search.isFocused();
+	}
+
+	/**
+	 * By default, it's triggered by double-clicking the search bar.
+	 */
+	public static boolean isSearchHighlightActive() {
+		return EmiScreenManager.search.highlight;
+	}
+
+	/**
+	 * @return The predicate to check if a stack matches current query.
+	 * 	This predicate won't update/change itself once returned.
+	 * 	<br>
+	 *  This is not affected by {@link EmiApi#isSearchHighlightActive()}.
+	 */
+	public static @Nullable Predicate<EmiStack> getSearchQueryPredicate() {
+		CompiledQuery query = EmiSearch.compiledQuery;
+		return query == null || query.isEmpty() ? null : query::test;
+	}
+
+	/**
+	 * @return If a recipe tree is active and counting items.
+	 */
+	public static boolean isInCraftingMode() {
+		return BoM.craftingMode && BoM.tree != null;
+	}
+
+	/**
+	 * @return A collection of synthetic favorites,
+	 *  which is the listed ingredients of the active recipe tree.
+	 *  The returned set is guaranteed to have deterministic ordering of iteration and hash table lookup.
+	 */
+	public static Set<EmiStack> getActiveSyntheticFavorites() {
+		if (!isInCraftingMode()) {
+			return Set.of();
+		}
+
+		List<EmiFavorite.Synthetic> syntheticFavorites = EmiFavorites.syntheticFavorites;
+		if (syntheticFavorites.isEmpty()) {
+			return Set.of();
+		}
+
+		Set<EmiStack> set = new LinkedHashSet<>(syntheticFavorites.size());
+		for (EmiFavorite.Synthetic fav : syntheticFavorites) {
+			for (EmiStack stack : fav.getEmiStacks()) {
+				set.add(stack.copy().setAmount(fav.amount));
+			}
+		}
+		return set;
 	}
 
 	/**

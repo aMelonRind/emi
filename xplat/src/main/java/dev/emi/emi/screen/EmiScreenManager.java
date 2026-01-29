@@ -1,17 +1,16 @@
 package dev.emi.emi.screen;
 
 import java.util.List;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import dev.emi.emi.mixin.accessor.HandledScreenAccessor;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
 import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
 import com.mojang.blaze3d.systems.RenderSystem;
 
 import dev.emi.emi.EmiPort;
@@ -21,8 +20,7 @@ import dev.emi.emi.api.EmiApi;
 import dev.emi.emi.api.recipe.EmiPlayerInventory;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.handler.EmiCraftContext;
-import dev.emi.emi.api.recipe.handler.EmiRecipeHandler;
-import dev.emi.emi.api.recipe.handler.StandardRecipeHandler;
+import dev.emi.emi.api.render.EmiSlotOverlay;
 import dev.emi.emi.api.render.EmiTooltipComponents;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
@@ -44,7 +42,6 @@ import dev.emi.emi.config.SidebarTheme;
 import dev.emi.emi.config.SidebarType;
 import dev.emi.emi.input.EmiBind;
 import dev.emi.emi.input.EmiInput;
-import dev.emi.emi.mixin.accessor.HandledScreenAccessor;
 import dev.emi.emi.network.CreateItemC2SPacket;
 import dev.emi.emi.network.EmiNetwork;
 import dev.emi.emi.platform.EmiClient;
@@ -68,7 +65,6 @@ import dev.emi.emi.screen.widget.EmiSearchWidget;
 import dev.emi.emi.screen.widget.SidebarButtonWidget;
 import dev.emi.emi.screen.widget.SizedButtonWidget;
 import dev.emi.emi.search.EmiSearch;
-import dev.emi.emi.search.EmiSearch.CompiledQuery;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.Element;
 import net.minecraft.client.gui.ParentElement;
@@ -79,9 +75,7 @@ import net.minecraft.client.gui.tooltip.TooltipComponent;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.ItemStack;
-import net.minecraft.screen.slot.Slot;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
@@ -245,6 +239,7 @@ public class EmiScreenManager {
 					}
 				}
 				EmiFavorites.updateSynthetic(inv);
+				EmiSlotOverlay.triggerListeners();
 				repopulatePanels(SidebarType.CRAFTABLES);
 			}
 		}
@@ -852,53 +847,11 @@ public class EmiScreenManager {
 		}
 	}
 
-	@SuppressWarnings({"rawtypes", "unchecked"})
 	private static void renderSlotOverlays(EmiDrawContext context, int mouseX, int mouseY, float delta, EmiScreenBase base) {
-		CompiledQuery query = null;
-		if (EmiScreenManager.search.highlight) {
-			query = EmiSearch.compiledQuery;
-		}
-		Set<Slot> ignoredSlots = Sets.newHashSet();
-		Set<EmiStack> synfavs = Sets.newHashSet();
-		if (BoM.craftingMode && BoM.tree != null) {
-			List<EmiFavorite.Synthetic> syntheticFavorites = EmiFavorites.syntheticFavorites;
-			for (EmiFavorite.Synthetic fav : syntheticFavorites) {
-				synfavs.addAll(fav.getEmiStacks());
-			}
-			
-			try {
-				HandledScreen<?> hs = EmiApi.getHandledScreen();
-				for (EmiRecipeHandler handler : EmiRecipeFiller.getAllHandlers(hs)) {
-					if (handler instanceof StandardRecipeHandler standard) {
-						ignoredSlots.addAll(standard.getInputSources(hs.getScreenHandler()));
-						ignoredSlots.addAll(standard.getCraftingSlots(hs.getScreenHandler()));
-					}
-				}
-			} catch (Throwable t) {
-				EmiLog.error("Recipe handler is throwing in renderSlotOverlays:", t);
-			}
-		}
 		if (base.screen() instanceof HandledScreen<?> hs && hs instanceof HandledScreenAccessor hsa) {
 			context.push();
 			context.matrices().translate(hsa.getX(), hsa.getY(), 0);
-			for (Slot slot : hs.getScreenHandler().slots) {
-				if (!slot.isEnabled()) {
-					continue;
-				}
-				EmiStack stack = EmiStack.of(slot.getStack());
-				context.push();
-				context.matrices().translate(0, 0, 300);
-				if (query != null) {
-					if (!query.test(stack)) {
-						context.fill(slot.x - 1, slot.y - 1, 18, 18, 0x77000000);
-					}
-				} else if (BoM.craftingMode && BoM.tree != null) {
-					if (!(slot.inventory instanceof PlayerInventory) && !ignoredSlots.contains(slot) && synfavs.contains(stack)) {
-						context.fill(slot.x - 1, slot.y - 1, 18, 18, 0x7700BBFF);
-					}
-				}
-				context.pop();
-			}
+			EmiSlotOverlay.renderDefault(context.raw(), hs);
 			context.pop();
 		}
 	}

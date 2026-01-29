@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import dev.emi.emi.api.render.EmiSlotOverlay;
 import org.lwjgl.glfw.GLFW;
 
 import com.google.common.collect.Lists;
@@ -185,6 +186,7 @@ public class EmiSearchWidget extends TextFieldWidget {
 				if (button == 0) {
 					if (System.currentTimeMillis() - lastClick < 500) {
 						highlight = !highlight;
+						EmiSlotOverlay.triggerListeners();
 						lastClick = 0;
 					} else {
 						lastClick = System.currentTimeMillis();

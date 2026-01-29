@@ -12,6 +12,7 @@ import com.google.common.collect.Sets;
 
 import dev.emi.emi.EmiPort;
 import dev.emi.emi.EmiUtil;
+import dev.emi.emi.api.render.EmiSlotOverlay;
 import dev.emi.emi.api.stack.Comparison;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
@@ -263,6 +264,7 @@ public class EmiSearch {
 			try {
 				CompiledQuery compiled = new CompiledQuery(query);
 				compiledQuery = compiled;
+				EmiSlotOverlay.triggerListeners();
 				if (compiled.isEmpty()) {
 					apply(this, source);
 					return;
