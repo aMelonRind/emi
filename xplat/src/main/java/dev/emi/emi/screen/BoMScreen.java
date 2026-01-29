@@ -8,7 +8,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import net.minecraft.client.util.math.MatrixStack;
 import org.joml.Matrix4fStack;
 import org.lwjgl.glfw.GLFW;
 
@@ -52,6 +51,7 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.gui.tooltip.TooltipComponent;
 import net.minecraft.client.sound.PositionedSoundInstance;
+import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
@@ -213,7 +213,12 @@ public class BoMScreen extends Screen {
 		int mx = (int) ((mouseX - width / 2) / scale - offX);
 		int my = (int) ((mouseY - height / 2) / scale - offY);
 
-		Bounds scaledScreenBounds = new Bounds(-(scaledWidth/2) - (int) offX, -(scaledHeight/2) - (int) offY, scaledWidth, scaledHeight);
+		Bounds scaledScreenBounds = new Bounds(
+				-(scaledWidth / 2) - (int) offX,
+				-(scaledHeight / 2) - (int) offY,
+				scaledWidth,
+				scaledHeight
+		);
 
 		MatrixStack view = RenderSystem.getModelViewStack();
 		view.push();
@@ -233,18 +238,10 @@ public class BoMScreen extends Screen {
 				cost.render(context, amounts);
 			}
 			for (Node node : nodes) {
-				if(shouldFullRenderNodes) {
+				if (shouldFullRenderNodes || !node.getBoundingBox().overlap(scaledScreenBounds).empty()) {
 					node.render(context, mx, my, delta, amounts);
-					if(EmiConfig.recipeTreeBoundingBoxes) {
+					if (EmiConfig.recipeTreeBoundingBoxes) {
 						node.renderBoundingBox(context);
-					}
-				} else {
-					Bounds nodeBounds = node.getBoundingBox();
-					if(!nodeBounds.overlap(scaledScreenBounds).empty()) {
-						node.render(context, mx, my, delta, amounts);
-						if(EmiConfig.recipeTreeBoundingBoxes) {
-							node.renderBoundingBox(context);
-						}
 					}
 				}
 			}
@@ -766,32 +763,34 @@ public class BoMScreen extends Screen {
 
 			context.setColor(0.5f,0.5f,0.5f,0.2f);
 			drawLine(context, bounds.x(), bounds.y(), this.x, this.y);
-			if(parent != null) {
-				drawLine(context, ((parent.x - this.x)/2 + this.x) - 2, ((parent.y - this.y)/2 + this.y) - 2, ((parent.x - this.x)/2 + this.x) + 2, ((parent.y - this.y)/2 + this.y) + 2);
+			if (parent != null) {
+				int x = (parent.x - this.x) / 2 + this.x;
+				int y = (parent.y - this.y) / 2 + this.y;
+				drawLine(context, x - 2, y - 2, x + 2, y + 2);
 			}
 
 			context.setColor(1, 0, 0);
-			drawLine(context, bounds.x(), bounds.y(), (bounds.right()), bounds.y());
-			drawLine(context, bounds.x(), bounds.y(), bounds.x(), (bounds.bottom()));
-			drawLine(context, (bounds.right()), bounds.y(), (bounds.right()), (bounds.bottom()));
-			drawLine(context, bounds.x(), (bounds.bottom()), (bounds.right()), (bounds.bottom()));
+			drawLine(context, bounds.x(), bounds.y(), bounds.right(), bounds.y());
+			drawLine(context, bounds.x(), bounds.y(), bounds.x(), bounds.bottom());
+			drawLine(context, bounds.right(), bounds.y(), bounds.right(), bounds.bottom());
+			drawLine(context, bounds.x(), bounds.bottom(), bounds.right(), bounds.bottom());
 			context.pop();
 		}
 
 		public Bounds getBoundingBox() {
-			
-			if(parent != null) {
-				int bw = this.width + 10 + (Math.abs(parent.x - this.x));
-				int bh = NODE_VERTICAL_SPACING + 10 + (Math.abs(parent.y - this.y));
-				int bx = ((parent.x - this.x)/2 + this.x) - bw/2;
-				int by = ((parent.y - this.y)/2 + this.y) - bh/2;
-				return new Bounds(bx, by, bw, bh);
-			}
 			int bw = this.width + 10;
 			int bh = NODE_VERTICAL_SPACING + 10;
-			int bx = x - bw/2;
-			int by = y - bh/2;
-			return new Bounds(bx, by, bw, bh);
+			int bx = this.x;
+			int by = this.y;
+			if (parent != null) {
+				int dx = parent.x - this.x;
+				int dy = parent.y - this.y;
+				bw += Math.abs(dx);
+				bh += Math.abs(dy);
+				bx += dx / 2;
+				by += dy / 2;
+			}
+			return new Bounds(bx - bw / 2, by - bh / 2, bw, bh);
 		}
 
 		public void setColor(EmiDrawContext context, MaterialNode node, boolean chanced, boolean hovered) {
