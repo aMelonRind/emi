@@ -949,13 +949,14 @@ public class BoMScreen extends Screen {
 					w += -dx;
 				}
 				// -dy = y - (parent.y + (NODE_VERTICAL_SPACING - 1))
-				// parent.y = y - NODE_VERTICAL_SPACING * 2
+				// parent.y = centerY - NODE_VERTICAL_SPACING * 2
 				// NODE_VERTICAL_SPACING = 20
-				// y - ((y - 40) + 19)
-				// y - (y - 21)
-				// 21
-				y -= 21;
-				h += 21;
+				// centerY = y + 11
+				// y - ((y + 11 - 40) + 19)
+				// y - (y - 10)
+				// 10
+				y -= 10;
+				h += 10;
 			}
 			if (node.recipe != null) {
 				h += 8;
