@@ -301,8 +301,8 @@ public class BoMScreen extends Screen {
 			int h = stackCamera.height() * EmiConfig.batcherCameraExpandPercentage / 100;
 			batcherCamera = new Bounds(
 					stackCamera.x() - w,
-					stackCamera.y() - w,
-					stackCamera.width() + h * 2,
+					stackCamera.y() - h,
+					stackCamera.width() + w * 2,
 					stackCamera.height() + h * 2
 			);
 			batcher.repopulate();
