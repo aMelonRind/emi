@@ -9,6 +9,8 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import dev.emi.emi.runtime.EmiLog;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
 import com.google.common.collect.Lists;
@@ -75,6 +77,7 @@ public class BoMScreen extends Screen {
 	// treat this as the tree's offset relative to the camera,
 	// not vise versa, which made me confused for a while.
 	private double offX, offY;
+	private @Nullable Runnable focuser = null;
 	private List<Node> nodes = Lists.newArrayList();
 	private List<Cost> costs = Lists.newArrayList();
 	private EmiPlayerInventory playerInv;
@@ -109,6 +112,11 @@ public class BoMScreen extends Screen {
 			offY = 0;
 		}
 		recalculateTree();
+		Runnable focus = this.focuser;
+		if (focus != null) {
+			focus.run();
+			this.focuser = null;
+		}
 	}
 
 	public void recalculateTree() {
@@ -393,13 +401,13 @@ public class BoMScreen extends Screen {
 		my = (int) ((my - height / 2) / scale - offY);
 		for (Cost cost : costs) {
 			if (mx >= cost.x && mx < cost.x + 16 && my >= cost.y && my < cost.y + 16) {
-				return new Hover(cost.cost.ingredient);
+				return new Hover(cost.cost.ingredient).rememberFocus(cost);
 			}
 		}
 		for (Node node : nodes) {
 			Hover hover = node.getHover(mx, my);
 			if (hover != null) {
-				return hover;
+				return hover.rememberFocus(node);
 			}
 		}
 		return null;
@@ -594,6 +602,7 @@ public class BoMScreen extends Screen {
 					if (button == 0) {
 						EmiApi.displayRecipes(hover.stack);
 						RecipeScreen.resolve = hover.stack;
+						hover.bindFocuser(this);
 						MinecraftClient client = MinecraftClient.getInstance();
 						// The first init doesn't realize a resolution exists so we do it again. What
 						// could go wrong.
@@ -735,6 +744,7 @@ public class BoMScreen extends Screen {
 		public EmiIngredient stack;
 		public MaterialNode node, resolve;
 		public EmiRecipeCategory category;
+		private Runnable focuser;
 
 		public Hover(EmiIngredient stack) {
 			this.stack = stack;
@@ -787,6 +797,58 @@ public class BoMScreen extends Screen {
 				return true;
 			}
 			return false;
+		}
+
+		public Hover rememberFocus(Cost cost) {
+			// the off variables are bound to the tree, not the camera
+			// so we're negating everything here
+			double ox = -offX;
+			double oy = -offY;
+			int cy = nodeHeight * NODE_VERTICAL_SPACING * 2;
+			focuser = () -> {
+				EmiLog.info("Focusing to Costs");
+				offX = -ox;
+				offY = -(oy - cy + nodeHeight * NODE_VERTICAL_SPACING * 2);
+			};
+			return this;
+		}
+
+		public Hover rememberFocus(Node node) {
+			double ox = -offX;
+			double oy = -offY;
+			int cy = nodeHeight * NODE_VERTICAL_SPACING * 2;
+			focuser = () -> {
+				List<EmiStack> chain = new ArrayList<>();
+				Node n = node;
+				while (n != null) {
+					chain.add(n.node.ingredient.getEmiStacks().get(0));
+					n = n.parent;
+				}
+				int index = chain.size() - 1;
+				n = null;
+				for (Node current : nodes) {
+					if (current.parent != n || !current.node.ingredient.getEmiStacks().get(0).isEqual(chain.get(index))) {
+						continue;
+					}
+					index--;
+					if (index == -1) {
+						EmiLog.info("Focusing to Node");
+						offX = -(current.x + (ox - node.x));
+						offY = -(current.y + (oy - node.y));
+						return;
+					}
+					n = current;
+				}
+				EmiLog.info("Fallback focusing to Costs");
+				// fallback, same logic as Cost
+				offX = -ox;
+				offY = -(nodeHeight * NODE_VERTICAL_SPACING * 2 + (oy - cy));
+			};
+			return this;
+		}
+
+		public void bindFocuser(BoMScreen screen) {
+			screen.focuser = this.focuser;
 		}
 	}
 
