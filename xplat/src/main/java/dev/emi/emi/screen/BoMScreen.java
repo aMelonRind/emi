@@ -212,6 +212,7 @@ public class BoMScreen extends Screen {
 			hasRemainders = !remainders.isEmpty();
 		} else {
 			nodes = Lists.newArrayList();
+			costs.clear();
 		}
 		CachedText.invalidate();
 		batcher.repopulate();
