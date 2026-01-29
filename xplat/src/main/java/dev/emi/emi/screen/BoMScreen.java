@@ -83,8 +83,8 @@ public class BoMScreen extends Screen {
 	private EmiPlayerInventory playerInv;
 	private boolean hasRemainders = false;;
 	public HandledScreen<?> old;
-	private int nodeWidth = 0;
 	private int nodeHeight = 0;
+	private int leftBound, rightBound;
 	private int lastMouseX, lastMouseY;
 	private double scrollAcc = 0;
 	private Bounds camera = Bounds.EMPTY;
@@ -121,12 +121,20 @@ public class BoMScreen extends Screen {
 
 	public void recalculateTree() {
 		help = new Bounds(width - 18, height - 18, 16, 16);
+		leftBound = 0;
+		rightBound = 0;
 		if (BoM.tree != null) {
 			TreeVolume volume = addNewNodes(BoM.tree.goal, BoM.tree.batches, 1, 0, ChanceState.DEFAULT);
 			nodes = volume.nodes;
 			int horizontalOffset = (volume.getMaxRight() + volume.getMinLeft()) / 2;
 			for (Node node : volume.nodes) {
 				node.x -= horizontalOffset;
+				if (node.x < leftBound) {
+					leftBound = node.x;
+				}
+				if (node.x + node.width > rightBound) {
+					rightBound = node.x + node.width;
+				}
 			}
 			if (!volume.nodes.isEmpty()) {
 				Node node = volume.nodes.get(0);
@@ -134,7 +142,6 @@ public class BoMScreen extends Screen {
 				batches = new Bounds(node.x + node.width / 2 + 6, node.y - 10, width + 12, 22);
 			}
 
-			nodeWidth = volume.getMaxRight() - volume.getMinLeft();
 			nodeHeight = getNodeHeight(BoM.tree.goal);
 			playerInv = EmiPlayerInventory.of(client.player);
 			BoM.tree.calculateProgress(playerInv);
@@ -181,6 +188,12 @@ public class BoMScreen extends Screen {
 			for (Cost cost : costs) {
 				cost.x -= costOffset;
 			}
+			if (-costOffset < leftBound) {
+				leftBound = -costOffset;
+			}
+			if (costOffset > rightBound) {
+				rightBound = costOffset;
+			}
 
 			int totalCostWidth = textRenderer.getWidth(EmiPort.translatable("emi.total_cost"));
 			mode = new Bounds(totalCostWidth / 2 + 4, cy - 20, 16, 16);
@@ -208,11 +221,18 @@ public class BoMScreen extends Screen {
 			for (Cost cost : remainders) {
 				cost.x -= costOffset;
 			}
+			if (-costOffset < leftBound) {
+				leftBound = -costOffset;
+			}
+			if (costOffset > rightBound) {
+				rightBound = costOffset;
+			}
 			costs.addAll(remainders);
 			hasRemainders = !remainders.isEmpty();
 		} else {
 			nodes = Lists.newArrayList();
 			costs.clear();
+			nodeHeight = 0;
 		}
 		CachedText.invalidate();
 		batcher.repopulate();
@@ -227,14 +247,14 @@ public class BoMScreen extends Screen {
 		float scale = getScale();
 		int scaledWidth = (int) (width / scale);
 		int scaledHeight = (int) (height / scale);
-		// TODO should be the ingredient width if higher
-		int contentWidth = nodeWidth * NODE_WIDTH;
-		int contentHeight = nodeHeight * NODE_VERTICAL_SPACING + 80;
-		int xBound = scaledWidth / 2 + contentWidth - 100;
-		int topBound = scaledHeight * 1 / -2 + 20;
-		int bottomBound = contentHeight + scaledHeight / 2 - 20;
-		offX = MathHelper.clamp(offX, -xBound, xBound);
-		offY = MathHelper.clamp(offY, -bottomBound, -topBound);
+		int contentHeight = nodeHeight * NODE_VERTICAL_SPACING * 2 + 16;
+		if (hasRemainders) {
+			contentHeight += 40;
+		}
+		int xMargin = scaledWidth / 3;
+		int yMargin = scaledHeight / 3;
+		offX = MathHelper.clamp(offX, -(rightBound + xMargin), -(leftBound - xMargin));
+		offY = MathHelper.clamp(offY, -(contentHeight + yMargin), -(0 - yMargin));
 
 		int mx = (int) ((mouseX - width / 2) / scale - offX);
 		int my = (int) ((mouseY - height / 2) / scale - offY);
