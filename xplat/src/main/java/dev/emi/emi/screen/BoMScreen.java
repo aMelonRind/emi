@@ -74,9 +74,7 @@ public class BoMScreen extends Screen {
 	private Bounds batches = new Bounds(-24, -50, 48, 26);
 	private Bounds mode = new Bounds(-24, -50, 16, 16);
 	private Bounds help = new Bounds(0, 0, 16, 16);
-	// treat this as the tree's offset relative to the camera,
-	// not vise versa, which made me confused for a while.
-	private double offX, offY;
+	private double cameraX, cameraY;
 	private @Nullable Runnable focuser = null;
 	private List<Node> nodes = Lists.newArrayList();
 	private List<Cost> costs = Lists.newArrayList();
@@ -107,9 +105,9 @@ public class BoMScreen extends Screen {
 
 	public void init() {
 		if (BoM.tree != null) {
-			offY = height / -3;
+			cameraY = height / 3;
 		} else {
-			offY = 0;
+			cameraY = 0;
 		}
 		recalculateTree();
 		Runnable focus = this.focuser;
@@ -253,11 +251,18 @@ public class BoMScreen extends Screen {
 		}
 		int xMargin = scaledWidth / 3;
 		int yMargin = scaledHeight / 3;
-		offX = MathHelper.clamp(offX, -(rightBound + xMargin), -(leftBound - xMargin));
-		offY = MathHelper.clamp(offY, -(contentHeight + yMargin), -(0 - yMargin));
+		cameraX = MathHelper.clamp(cameraX, leftBound - xMargin, rightBound + xMargin);
+		cameraY = MathHelper.clamp(cameraY, -yMargin, contentHeight + yMargin);
 
-		int mx = (int) ((mouseX - width / 2) / scale - offX);
-		int my = (int) ((mouseY - height / 2) / scale - offY);
+		// look how easy it is to understand this after reversing offX to cameraX
+		// firse, use the camera as the base value, defining the center of the screen as origin
+		// second, minus mouse by half of the screen then divide, converting the signal to the compatible type
+		// tadaa, got position of the mouse on the recipe tree view.
+		// still don't understand how to interpret offX tho
+		// like, wtf is (int) ((mouseX - width / 2) / scale - offX)
+		// why is offset being used to subtract instead of add.
+		int mx = (int) (cameraX + (mouseX - width / 2) / scale);
+		int my = (int) (cameraY + (mouseY - height / 2) / scale);
 
 		if (EmiConfig.recipeTreeBoundingBoxes) {
 			frameCounter++;
@@ -288,12 +293,12 @@ public class BoMScreen extends Screen {
 		view.push();
 		view.translate(width / 2, height / 2, 0);
 		view.scale(scale, scale, 1);
-		view.translate(offX, offY, 0);
+		view.translate(-cameraX, -cameraY, 0);
 		EmiPort.applyModelViewMatrix();
 
 		camera = new Bounds(
-				-(scaledWidth / 2) - (int) offX - 2,
-				-(scaledHeight / 2) - (int) offY - 2,
+				(int) cameraX - scaledWidth / 2 - 2,
+				(int) cameraY - scaledHeight / 2 - 2,
 				scaledWidth + 4,
 				scaledHeight + 4
 		);
@@ -418,8 +423,8 @@ public class BoMScreen extends Screen {
 
 	public Hover getHoveredStack(int mx, int my) {
 		float scale = getScale();
-		mx = (int) ((mx - width / 2) / scale - offX);
-		my = (int) ((my - height / 2) / scale - offY);
+		mx = (int) (cameraX + (mx - width / 2) / scale);
+		my = (int) (cameraY + (my - height / 2) / scale);
 		for (Cost cost : costs) {
 			if (mx >= cost.x && mx < cost.x + 16 && my >= cost.y && my < cost.y + 16) {
 				return new Hover(cost.cost.ingredient).rememberFocus(cost);
@@ -597,8 +602,8 @@ public class BoMScreen extends Screen {
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
 		Hover hover = getHoveredStack((int) mouseX, (int) mouseY);
 		float scale = getScale();
-		int mx = (int) ((mouseX - width / 2) / scale - offX);
-		int my = (int) ((mouseY - height / 2) / scale - offY);
+		int mx = (int) (cameraX + (mouseX - width / 2) / scale);
+		int my = (int) (cameraY + (mouseY - height / 2) / scale);
 		if (hover != null) {
 			if (button == 1 && hover.node != null && hover.node.recipe != null) {
 				if (EmiInput.isShiftDown()) {
@@ -664,8 +669,8 @@ public class BoMScreen extends Screen {
 		amount = (int) scrollAcc;
 		scrollAcc %= 1;
 		float scale = getScale();
-		int mx = (int) ((mouseX - width / 2) / scale - offX);
-		int my = (int) ((mouseY - height / 2) / scale - offY);
+		int mx = (int) (cameraX + (mouseX - width / 2) / scale);
+		int my = (int) (cameraY + (mouseY - height / 2) / scale);
 		if (BoM.tree != null && batches.contains(mx, my)) {
 			long adjustment = (long) amount;
 			if (EmiInput.isShiftDown()) {
@@ -695,8 +700,8 @@ public class BoMScreen extends Screen {
 	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
 		if (button == 0 || button == 2) {
 			float scale = getScale();
-			offX += deltaX / scale;
-			offY += deltaY / scale;
+			cameraX -= deltaX / scale;
+			cameraY -= deltaY / scale;
 			return true;
 		}
 		return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
@@ -821,22 +826,20 @@ public class BoMScreen extends Screen {
 		}
 
 		public Hover rememberFocus(Cost cost) {
-			// the off variables are bound to the tree, not the camera
-			// so we're negating everything here
-			double ox = -offX;
-			double oy = -offY;
+			double ox = cameraX;
+			double oy = cameraY;
 			int cy = nodeHeight * NODE_VERTICAL_SPACING * 2;
 			focuser = () -> {
 				EmiLog.info("Focusing to Costs");
-				offX = -ox;
-				offY = -(oy - cy + nodeHeight * NODE_VERTICAL_SPACING * 2);
+				cameraX = ox;
+				cameraY = oy - cy + nodeHeight * NODE_VERTICAL_SPACING * 2;
 			};
 			return this;
 		}
 
 		public Hover rememberFocus(Node node) {
-			double ox = -offX;
-			double oy = -offY;
+			double ox = cameraX;
+			double oy = cameraY;
 			int cy = nodeHeight * NODE_VERTICAL_SPACING * 2;
 			focuser = () -> {
 				List<EmiStack> chain = new ArrayList<>();
@@ -854,16 +857,16 @@ public class BoMScreen extends Screen {
 					index--;
 					if (index == -1) {
 						EmiLog.info("Focusing to Node");
-						offX = -(current.x + (ox - node.x));
-						offY = -(current.y + (oy - node.y));
+						cameraX = ox - node.x + current.x;
+						cameraY = oy - node.y + current.y;
 						return;
 					}
 					n = current;
 				}
 				EmiLog.info("Fallback focusing to Costs");
 				// fallback, same logic as Cost
-				offX = -ox;
-				offY = -(nodeHeight * NODE_VERTICAL_SPACING * 2 + (oy - cy));
+				cameraX = ox;
+				cameraY = oy - cy + nodeHeight * NODE_VERTICAL_SPACING * 2;
 			};
 			return this;
 		}
