@@ -5,10 +5,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import org.joml.Matrix4fStack;
 import org.lwjgl.glfw.GLFW;
 
 import com.google.common.collect.Lists;
@@ -63,6 +63,10 @@ public class BoMScreen extends Screen {
 	private static final int NODE_HORIZONTAL_SPACING = 8;
 	private static final int NODE_VERTICAL_SPACING = 20;
 	private static final int COST_HORIZONTAL_SPACING = 8;
+	private static final int[] BOUNDING_BOX_COLORS = {
+			0x7FFF0000, 0x7F00FF00, 0x7F0000FF, 0x7FFFFF00, 0x7FFF00FF, 0x7F00FFFF,
+			0x7FFF7F00, 0x7F00FF7F, 0x7F7F00FF, 0x7F7FFF00, 0x7F007FFF, 0x7FFF007F
+	};
 	private static StackBatcher batcher = new StackBatcher();
 	private static int zoom = 0;
 	private Bounds batches = new Bounds(-24, -50, 48, 26);
@@ -80,7 +84,17 @@ public class BoMScreen extends Screen {
 	private int nodeHeight = 0;
 	private int lastMouseX, lastMouseY;
 	private double scrollAcc = 0;
-	private boolean shouldFullRenderNodes = true;
+	private Bounds camera = Bounds.EMPTY;
+	private Bounds stackCamera = Bounds.EMPTY;
+
+	// debug
+	private int boxColorIndex = 0;
+	private int lastFps = 0;
+	private int lastUspf = 0;
+	private int frameCounter = 0;
+	private long frameCounterStart = System.nanoTime();
+	private int lastBatcherUs = -1;
+	private long batcherStart = System.nanoTime();
 
 	public BoMScreen(HandledScreen<?> old) {
 		super(EmiPort.translatable("screen.emi.recipe_tree"));
@@ -98,7 +112,6 @@ public class BoMScreen extends Screen {
 
 	public void recalculateTree() {
 		help = new Bounds(width - 18, height - 18, 16, 16);
-		shouldFullRenderNodes = true;
 		if (BoM.tree != null) {
 			TreeVolume volume = addNewNodes(BoM.tree.goal, BoM.tree.batches, 1, 0, ChanceState.DEFAULT);
 			nodes = volume.nodes;
@@ -191,6 +204,7 @@ public class BoMScreen extends Screen {
 		} else {
 			nodes = Lists.newArrayList();
 		}
+		CachedText.invalidate();
 		batcher.repopulate();
 	}
 
@@ -215,12 +229,30 @@ public class BoMScreen extends Screen {
 		int mx = (int) ((mouseX - width / 2) / scale - offX);
 		int my = (int) ((mouseY - height / 2) / scale - offY);
 
-		Bounds scaledScreenBounds = new Bounds(
-				-(scaledWidth / 2) - (int) offX - 32,
-				-(scaledHeight / 2) - (int) offY - 32,
-				scaledWidth + 64,
-				scaledHeight + 64
-		);
+		if (EmiConfig.recipeTreeBoundingBoxes) {
+			frameCounter++;
+			long now = System.nanoTime();
+			long elapsed = now - frameCounterStart;
+			if (elapsed > 1_000_000_000) {
+				lastFps = frameCounter / (int) (elapsed / 1_000_000_000);
+				lastUspf = (int) (elapsed / 1000) / frameCounter;
+				frameCounterStart = now;
+				frameCounter = 0;
+			}
+			context.drawText(Text.literal(lastFps + " FPS, " + lastUspf + " USPF"), 5, 5);
+			// i guess it's safe to call a duplicate?
+			batcher.begin(0, 0, 0);
+			if (!batcher.isPopulated()) {
+				lastBatcherUs = -1;
+				batcherStart = System.nanoTime();
+				context.drawText(Text.literal("Populating batcher"), 5, 15);
+			} else {
+				if (lastBatcherUs == -1) {
+					lastBatcherUs = (int) ((System.nanoTime() - batcherStart) / 1000);
+				}
+				context.drawText(Text.literal("Batcher populate frame: " + lastBatcherUs + "us"), 5, 15);
+			}
+		}
 
 		MatrixStack view = RenderSystem.getModelViewStack();
 		view.push();
@@ -228,6 +260,41 @@ public class BoMScreen extends Screen {
 		view.scale(scale, scale, 1);
 		view.translate(offX, offY, 0);
 		EmiPort.applyModelViewMatrix();
+
+		camera = new Bounds(
+				-(scaledWidth / 2) - (int) offX - 2,
+				-(scaledHeight / 2) - (int) offY - 2,
+				scaledWidth + 4,
+				scaledHeight + 4
+		);
+
+		if (EmiConfig.recipeTreeBoundingBoxes) {
+			int sx = camera.width() / 5;
+			int sy = camera.height() / 5;
+			camera = new Bounds(
+					camera.x() + sx,
+					camera.y() + sy,
+					camera.width() - sx * 2,
+					camera.height() - sy * 2
+			);
+			// render borders
+			context.setColor(1.0f, 0.0f, 0.0f, 0.25f);
+			int x = camera.x() + 2, y = camera.y() + 2, w = camera.width() - 4, h = camera.height() - 4;
+			context.fill(x, y - h, w, h, -1);
+			context.fill(x, y + h, w, h, -1);
+			context.fill(x - w, y - h, w, h * 3, -1);
+			context.fill(x + w, y - h, w, h * 3, -1);
+			context.setColor(1, 1, 1);
+			boxColorIndex = 0;
+		}
+
+		stackCamera = new Bounds(
+				camera.x() - 30,
+				camera.y() - 30,
+				camera.width() + 60,
+				camera.height() + 60
+		);
+
 		if (BoM.tree != null) {
 			batcher.begin(0, 0, 0);
 			int cy = nodeHeight * NODE_VERTICAL_SPACING * 2;
@@ -240,14 +307,8 @@ public class BoMScreen extends Screen {
 				cost.render(context, amounts);
 			}
 			for (Node node : nodes) {
-				if (shouldFullRenderNodes || node.getBoundingBox().overlaps(scaledScreenBounds)) {
-					node.render(context, mx, my, delta, amounts);
-					if (EmiConfig.recipeTreeBoundingBoxes) {
-						node.renderBoundingBox(context);
-					}
-				}
+				node.render(context, mx, my, delta, amounts);
 			}
-			shouldFullRenderNodes = false;
 			int color = -1;
 			if (batches.contains(mx, my)) {
 				color = 0xff8099ff;
@@ -264,9 +325,15 @@ public class BoMScreen extends Screen {
 
 			// batch render amount after batcher
 			context.push();
-			context.matrices().translate(17, 9, 200);
+			EmiRenderHelper.renderAmountTranslate(context);
+			Bounds textCamera = new Bounds(
+					camera.x() - EmiRenderHelper.AMOUNT_TEXT_RIGHT_SHIFT,
+					camera.y() - EmiRenderHelper.AMOUNT_TEXT_DOWN_SHIFT,
+					camera.width(),
+					camera.height()
+			);
 			for (AmountRenderInfo info : amounts) {
-				info.render(context);
+				info.render(context, textCamera);
 			}
 			context.pop();
 		} else {
@@ -364,16 +431,38 @@ public class BoMScreen extends Screen {
 		return new TreeVolume(node, multiplier, depth * NODE_VERTICAL_SPACING, chance);
 	}
 
-	private static void drawLine(EmiDrawContext context, int x1, int y1, int x2, int y2) {
-		if (x2 < x1) {
-			drawLine(context, x2, y1, x1, y2);
+	private void drawHorizontalLine(EmiDrawContext context, int x1, int x2, int y) {
+		if (y < camera.top() || y > camera.bottom()) {
 			return;
 		}
-		if (y2 < y1) {
-			drawLine(context, x1, y2, x2, y1);
+		if (x1 < x2) {
+			if (x2 < camera.left() || x1 > camera.right()) {
+				return;
+			}
+			context.fill(x1, y, x2 - x1 + 1, 1, -1);
+		} else {
+			if (x1 < camera.left() || x2 > camera.right()) {
+				return;
+			}
+			context.fill(x2, y, x1 - x2 + 1, 1, -1);
+		}
+	}
+
+	private void drawVerticalLine(EmiDrawContext context, int x, int y1, int y2) {
+		if (x < camera.left() || x > camera.right()) {
 			return;
 		}
-		context.fill(x1, y1, x2 - x1 + 1, y2 - y1 + 1, 0xFFFFFFFF);
+		if (y1 < y2) {
+			if (y2 < camera.top() || y1 > camera.bottom()) {
+				return;
+			}
+			context.fill(x, y1, 1, y2 - y1 + 1, -1);
+		} else {
+			if (y1 < camera.top() || y2 > camera.bottom()) {
+				return;
+			}
+			context.fill(x, y2, 1, y1 - y2 + 1, -1);
+		}
 	}
 
 	public float getScale() {
@@ -580,6 +669,7 @@ public class BoMScreen extends Screen {
 		public int x, y;
 		public long alreadyDone = 0;
 		public boolean remainder;
+		private CachedText textCache = new CachedText();
 
 		public Cost(FlatMaterialCost cost, int x, int y, boolean remainder) {
 			this.cost = cost;
@@ -589,31 +679,37 @@ public class BoMScreen extends Screen {
 		}
 
 		public void render(EmiDrawContext context, List<AmountRenderInfo> amounts) {
-			batcher.render(cost.ingredient, context.raw(), x, y, 0, ~(EmiIngredient.RENDER_AMOUNT | EmiIngredient.RENDER_REMAINDER));
+			if (stackCamera.overlaps(x, y, 16, 16) || !batcher.isPopulated()) {
+				batcher.render(cost.ingredient, context.raw(), x, y, 0, ~(EmiIngredient.RENDER_AMOUNT | EmiIngredient.RENDER_REMAINDER));
+			}
+
 //			EmiRenderHelper.renderAmount(context, x, y, getAmountText());
+			// AmountRenderInfo is already culled
 			amounts.add(new AmountRenderInfo(x, y, getAmountText()));
 		}
 
 		public Text getAmountText() {
-			long adjusted = cost.getEffectiveAmount();
-			Text totalText;
-			if (cost instanceof ChanceMaterialCost cmc) {
-				totalText = EmiPort.append(EmiPort.literal("≈"), EmiRenderHelper.getAmountText(cost.ingredient, adjusted))
-					.formatted(Formatting.GOLD);
-			} else {
-				totalText = EmiRenderHelper.getAmountText(cost.ingredient, adjusted);
-			}
-			if (!remainder && BoM.craftingMode) {
-				long amount = alreadyDone;
-				if (amount < adjusted) {
-					Text amountText = amount == 0 ? EmiPort.literal("0") : (EmiRenderHelper.getAmountText(cost.ingredient, amount));
-					MutableText text = EmiPort.append(EmiPort.literal("", Formatting.RED), amountText);
-					text = EmiPort.append(text, EmiPort.literal("/"));
-					text = EmiPort.append(text, totalText);
-					return text;
+			return textCache.getOrCompute(() -> {
+				long adjusted = cost.getEffectiveAmount();
+				Text totalText;
+				if (cost instanceof ChanceMaterialCost cmc) {
+					totalText = EmiPort.append(EmiPort.literal("≈"), EmiRenderHelper.getAmountText(cost.ingredient, adjusted))
+						.formatted(Formatting.GOLD);
+				} else {
+					totalText = EmiRenderHelper.getAmountText(cost.ingredient, adjusted);
 				}
-			}
-			return totalText;
+				if (!remainder && BoM.craftingMode) {
+					long amount = alreadyDone;
+					if (amount < adjusted) {
+						Text amountText = amount == 0 ? EmiPort.literal("0") : (EmiRenderHelper.getAmountText(cost.ingredient, amount));
+						MutableText text = EmiPort.append(EmiPort.literal("", Formatting.RED), amountText);
+						text = EmiPort.append(text, EmiPort.literal("/"));
+						text = EmiPort.append(text, totalText);
+						return text;
+					}
+				}
+				return totalText;
+			});
 		}
 	}
 
@@ -683,6 +779,7 @@ public class BoMScreen extends Screen {
 		public int width, x, y, midOffset;
 		public long amount;
 		public ChanceState chance;
+		private CachedText textCache = new CachedText();
 
 		public Node(MaterialNode node, long amount, int x, int y, ChanceState chance) {
 			this.node = node;
@@ -701,25 +798,36 @@ public class BoMScreen extends Screen {
 		}
 
 		public void render(EmiDrawContext context, int mouseX, int mouseY, float delta, List<AmountRenderInfo> amounts) {
-			if (parent != null) {
+			Bounds bound = getBoundingBox();
+			boolean doRender = camera.overlaps(bound);
+			// taking the numbers from below:
+			// x - 18 + midOffset, y - 8
+			// x + xo - 8 + midOffset, y - 8
+			// xo = 0 or 11
+			// raw number ranges from -18 to +3, delta 21, meaning width is 16 + 21 = 37
+			boolean doStackRender = stackCamera.overlaps(x - 18 + midOffset, y - 8, 37, 16)
+					|| !batcher.isPopulated();
+			if (!doRender && !doStackRender) {
+				return;
+			}
+
+			if (doRender && parent != null) {
 				context.push();
 
 				setColor(context, parent.node, node.consumeChance != 1 || (resolution != null && resolution.consumeChance != 1), false);
-				
-				int nx = x;
-				int ny = y;
+
 				int px = parent.x;
 				int py = parent.y;
 				int off = NODE_VERTICAL_SPACING - 1;
 				if (resolution != null) {
 					context.drawTexture(EmiRenderHelper.WIDGETS, x - 3, y - 19, 9, 192, 7, 7);
-					drawLine(context, nx, y - 12, nx, ny - 11);
-					drawLine(context, nx, py + off, nx, y - 19);
+					drawVerticalLine(context, x, y - 12, y - 11);
+					drawVerticalLine(context, x, py + off, y - 19);
 				} else {
-					drawLine(context, nx, ny - 11, nx, py + off);
+					drawVerticalLine(context, x, y - 11, py + off);
 				}
 				setColor(context, parent.node, false, false);
-				drawLine(context, px, py + off, nx, py + off);
+				drawHorizontalLine(context, px, x, py + off);
 				context.pop();
 			}
 			int xo = 0;
@@ -730,69 +838,111 @@ public class BoMScreen extends Screen {
 				int hy = y + 10;
 				context.push();
 
-				setColor(context, node, node.produceChance != 1, false);
+				if (doRender) {
+					setColor(context, node, node.produceChance != 1, false);
 
-				if (node.state != FoldState.EXPANDED) {
-					drawLine(context, x, hy + 1, x, hy + 3);
-				} else {
-					drawLine(context, x, hy + 1, x, hy + 8);
+					if (node.state != FoldState.EXPANDED) {
+						drawVerticalLine(context, x, hy + 1, hy + 3);
+					} else {
+						drawVerticalLine(context, x, hy + 1, hy + 8);
+					}
 				}
 
 				boolean hovered = mouseX >= lx && mouseY >= ly && mouseX <= hx && mouseY <= hy;
 				setColor(context, node, node.produceChance != 1, hovered);
-				drawLine(context, lx, ly, lx, hy);
-				drawLine(context, hx, ly, hx, hy);
-				drawLine(context, lx, ly, hx, ly);
-				drawLine(context, lx, hy, hx, hy);
-				EmiRecipeCategory cat = node.recipe.getCategory();
-				if (StackBatcher.isEnabled() && EmiRecipeCategoryProperties.getSimplifiedIcon(cat) instanceof Batchable b) {
-					batcher.render(b, context.raw(), x - 18 + midOffset, y - 8, delta);
-				} else {
-					cat.renderSimplified(context.raw(), x - 18 + midOffset, y - 8, delta);
+				if (doRender) {
+					drawVerticalLine(context, lx, ly, hy);
+					drawVerticalLine(context, hx, ly, hy);
+					drawHorizontalLine(context, lx, hx, ly);
+					drawHorizontalLine(context, lx, hx, hy);
+				}
+				if (doStackRender) {
+					EmiRecipeCategory cat = node.recipe.getCategory();
+					if (StackBatcher.isEnabled() && EmiRecipeCategoryProperties.getSimplifiedIcon(cat) instanceof Batchable b) {
+						batcher.render(b, context.raw(), x - 18 + midOffset, y - 8, delta);
+					} else {
+						cat.renderSimplified(context.raw(), x - 18 + midOffset, y - 8, delta);
+					}
 				}
 				xo = 11;
 				context.pop();
 			}
 			context.setColor(1f, 1f, 1f, 1f);
-			batcher.render(node.ingredient, context.raw(), x + xo - 8 + midOffset, y - 8, 0);
+			if (doStackRender) {
+				batcher.render(node.ingredient, context.raw(), x + xo - 8 + midOffset, y - 8, 0);
+			}
 //			EmiRenderHelper.renderAmount(context, x + xo - 8 + midOffset, y - 8, getAmountText());
+			// AmountRenderInfo is already culled
 			amounts.add(new AmountRenderInfo(x + xo - 8 + midOffset, y - 8, getAmountText()));
+
+			if (EmiConfig.recipeTreeBoundingBoxes) {
+				renderBoundingBox(context);
+			}
 		}
 
-		public void renderBoundingBox(EmiDrawContext context) {
+		private void renderBoundingBox(EmiDrawContext context) {
 			Bounds bounds = getBoundingBox();
 			context.push();
 
 			context.setColor(0.5f,0.5f,0.5f,0.2f);
-			drawLine(context, bounds.x(), bounds.y(), this.x, this.y);
+			int x1 = bounds.x(), y1 = bounds.y(), x2 = this.x, y2 = this.y, temp;
+			if (x2 < x1) {
+				temp = x1;
+				x1 = x2;
+				x2 = temp;
+			}
+			if (y2 < y1) {
+				temp = y1;
+				y1 = y2;
+				y2 = temp;
+			}
+			context.fill(x1, y1, x2 - x1 + 1, y2 - y1 + 1, -1);
 			if (parent != null) {
 				int x = (parent.x - this.x) / 2 + this.x;
 				int y = (parent.y - this.y) / 2 + this.y;
-				drawLine(context, x - 2, y - 2, x + 2, y + 2);
+				context.fill(x - 2, y - 2, 5, 5, -1);
 			}
 
-			context.setColor(1, 0, 0);
-			drawLine(context, bounds.x(), bounds.y(), bounds.right(), bounds.y());
-			drawLine(context, bounds.x(), bounds.y(), bounds.x(), bounds.bottom());
-			drawLine(context, bounds.right(), bounds.y(), bounds.right(), bounds.bottom());
-			drawLine(context, bounds.x(), bounds.bottom(), bounds.right(), bounds.bottom());
+			int color = BOUNDING_BOX_COLORS[boxColorIndex++];
+			if (boxColorIndex >= BOUNDING_BOX_COLORS.length) {
+				boxColorIndex = 0;
+			}
+			context.setColor(1, 1, 1);
+			context.fill(bounds.left(), bounds.top(), bounds.width(), 1, color);
+			context.fill(bounds.left(), bounds.bottom() - 1, bounds.width(), 1, color);
+			context.fill(bounds.left(), bounds.top() + 1, 1, bounds.height() - 2, color);
+			context.fill(bounds.right() - 1, bounds.top() + 1, 1, bounds.height() - 2, color);
 			context.pop();
 		}
 
-		public Bounds getBoundingBox() {
-			int bw = this.width + 10;
-			int bh = NODE_VERTICAL_SPACING + 10;
-			int bx = this.x;
-			int by = this.y;
+		private Bounds getBoundingBox() {
+			int halfW = this.width / 2;
+			int x = this.x - halfW;
+			int y = this.y - 11;
+			int w = this.width | 1; // halfW * 2 + 1
+			int h = 22; // (y + 10) - (y - 11) + 1
 			if (parent != null) {
 				int dx = parent.x - this.x;
-				int dy = parent.y - this.y;
-				bw += Math.abs(dx);
-				bh += Math.abs(dy);
-				bx += dx / 2;
-				by += dy / 2;
+				if (dx > halfW) {
+					w += dx - halfW;
+				} else if (dx < -halfW) {
+					dx += halfW;
+					x += dx;
+					w += -dx;
+				}
+				// -dy = y - (parent.y + (NODE_VERTICAL_SPACING - 1))
+				// parent.y = y - NODE_VERTICAL_SPACING * 2
+				// NODE_VERTICAL_SPACING = 20
+				// y - ((y - 40) + 19)
+				// y - (y - 21)
+				// 21
+				y -= 21;
+				h += 21;
 			}
-			return new Bounds(bx - bw / 2, by - bh / 2, bw, bh);
+			if (node.recipe != null) {
+				h += 8;
+			}
+			return new Bounds(x - 1, y - 1, w + 2, h + 2);
 		}
 
 		public void setColor(EmiDrawContext context, MaterialNode node, boolean chanced, boolean hovered) {
@@ -813,15 +963,17 @@ public class BoMScreen extends Screen {
 		}
 
 		public Text getAmountText() {
-			if (chance.chanced()) {
-				long a = Math.round(amount * chance.chance());
-				a = Math.max(a, node.amount);
-				return EmiPort.append(EmiPort.literal("≈"),
-						EmiRenderHelper.getAmountText(node.ingredient, a))
-					.formatted(Formatting.GOLD);
-			} else {
-				return EmiRenderHelper.getAmountText(node.ingredient, amount);
-			}
+			return textCache.getOrCompute(() -> {
+				if (chance.chanced()) {
+					long a = Math.round(amount * chance.chance());
+					a = Math.max(a, node.amount);
+					return EmiPort.append(EmiPort.literal("≈"),
+							EmiRenderHelper.getAmountText(node.ingredient, a))
+						.formatted(Formatting.GOLD);
+				} else {
+					return EmiRenderHelper.getAmountText(node.ingredient, amount);
+				}
+			});
 		}
 
 		public Hover getHover(int mouseX, int mouseY) {
@@ -933,9 +1085,39 @@ public class BoMScreen extends Screen {
 	}
 
 	private static record AmountRenderInfo(int x, int y, Text amount) {
-		public void render(EmiDrawContext context) {
-			int tx = x - Math.min(14, EmiRenderHelper.CLIENT.textRenderer.getWidth(amount));
-			context.drawTextWithShadow(amount, tx, y, -1);
+		public void render(EmiDrawContext context, Bounds camera) {
+			int width = EmiRenderHelper.getTextWidth(amount);
+			int tx = x - Math.min(EmiRenderHelper.AMOUNT_TEXT_MAX_LEFT_SHIFT, width);
+			if (camera.overlaps(tx, y, width + 1, 10)) {
+				context.drawTextWithShadow(amount, tx, y, -1);
+			}
+		}
+	}
+
+	private static class CachedText {
+		private static int mainSyncId = 1;
+		private int syncId = 0;
+		private Text cache = null;
+		private int width = 0;
+
+		public static void invalidate() {
+			mainSyncId++;
+		}
+
+		public Text getOrCompute(Supplier<Text> supplier) {
+			if (syncId != mainSyncId || cache == null) {
+				cache = supplier.get();
+				syncId = mainSyncId;
+				width = EmiRenderHelper.getTextWidth(cache);
+			}
+			return cache;
+		}
+
+		/**
+		 * Does not check if it's up-to-date. Consider trigger the getter first.
+		 */
+		public int getWidth() {
+			return this.width;
 		}
 	}
 }

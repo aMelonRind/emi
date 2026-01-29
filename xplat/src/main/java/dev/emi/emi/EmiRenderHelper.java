@@ -56,6 +56,9 @@ public class EmiRenderHelper {
 	public static final Identifier DASH = EmiPort.id("emi", "textures/gui/dash.png");
 	public static final Identifier CONFIG = EmiPort.id("emi", "textures/gui/config.png");
 	public static final Identifier PIECES = EmiPort.id("emi", "textures/gui/pieces.png");
+	public static final int AMOUNT_TEXT_DOWN_SHIFT = 9;
+	public static final int AMOUNT_TEXT_RIGHT_SHIFT = 17;
+	public static final int AMOUNT_TEXT_MAX_LEFT_SHIFT = 14;
 
 	public static void drawNinePatch(EmiDrawContext context, Identifier texture, int x, int y, int w, int h, int u, int v, int cornerLength, int centerLength) {
 		int cor = cornerLength;
@@ -265,12 +268,28 @@ public class EmiRenderHelper {
 		}
 	}
 
+	// method got split for culling support
 	public static void renderAmount(EmiDrawContext context, int x, int y, Text amount) {
 		context.push();
-		context.matrices().translate(0, 0, 200);
-		int tx = x + 17 - Math.min(14, CLIENT.textRenderer.getWidth(amount));
-		context.drawTextWithShadow(amount, tx, y + 9, -1);
+		renderAmountTranslate(context);
+		renderAmountPreTranslated(context, x, y, amount);
 		context.pop();
+	}
+
+	public static void renderAmountTranslate(EmiDrawContext context) {
+		context.matrices().translate(AMOUNT_TEXT_RIGHT_SHIFT, AMOUNT_TEXT_DOWN_SHIFT, 200);
+	}
+
+	public static void renderAmountPreTranslated(EmiDrawContext context, int x, int y, Text amount) {
+		context.drawTextWithShadow(amount, x - getAmountLeftShift(amount), y, -1);
+	}
+
+	public static int getAmountLeftShift(Text amount) {
+		return Math.min(AMOUNT_TEXT_MAX_LEFT_SHIFT, getTextWidth(amount));
+	}
+
+	public static int getTextWidth(Text text) {
+		return CLIENT.textRenderer.getWidth(text);
 	}
 
 	public static void renderIngredient(EmiIngredient ingredient, EmiDrawContext context, int x, int y) {
