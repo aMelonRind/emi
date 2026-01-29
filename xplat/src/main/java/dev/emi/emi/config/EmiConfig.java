@@ -510,6 +510,10 @@ public class EmiConfig {
 	@ConfigValue("dev.recipe-tree-bounding-boxes")
 	public static boolean recipeTreeBoundingBoxes = false;
 
+	@Comment("The percentage of batcher camera expand multiplier in recipe tree.")
+	@ConfigValue("dev.batcher-camera-expand-percentage")
+	public static int batcherCameraExpandPercentage = 20;
+
 	// Persistent (currently empty)
 
 	public static void loadConfig() {

@@ -23,6 +23,14 @@ public record Bounds(int x, int y, int width, int height) {
 		return x >= this.x() && x < this.x() + this.width() && y >= this.y() && y < this.y() + this.height();
 	}
 
+	public boolean contains(Bounds another) {
+		return contains(another.x(), another.y(), another.width(), another.height());
+	}
+
+	public boolean contains(int x, int y, int w, int h) {
+		return x >= this.left() && x + w <= this.right() && y >= this.top() && y + h <= this.bottom();
+	}
+
 	public boolean empty() {
 		return width <= 0 || height <= 0;
 	}

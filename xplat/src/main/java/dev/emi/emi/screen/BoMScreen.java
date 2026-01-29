@@ -86,6 +86,7 @@ public class BoMScreen extends Screen {
 	private double scrollAcc = 0;
 	private Bounds camera = Bounds.EMPTY;
 	private Bounds stackCamera = Bounds.EMPTY;
+	private Bounds batcherCamera = null;
 
 	// debug
 	private int boxColorIndex = 0;
@@ -294,6 +295,22 @@ public class BoMScreen extends Screen {
 				camera.width() + 60,
 				camera.height() + 60
 		);
+
+		if (batcherCamera == null || !batcherCamera.contains(stackCamera)) {
+			int w = stackCamera.width() * EmiConfig.batcherCameraExpandPercentage / 100;
+			int h = stackCamera.height() * EmiConfig.batcherCameraExpandPercentage / 100;
+			batcherCamera = new Bounds(
+					stackCamera.x() - w,
+					stackCamera.y() - w,
+					stackCamera.width() + h * 2,
+					stackCamera.height() + h * 2
+			);
+			batcher.repopulate();
+			if (EmiConfig.recipeTreeBoundingBoxes) {
+				lastBatcherUs = -1;
+				batcherStart = System.nanoTime();
+			}
+		}
 
 		if (BoM.tree != null) {
 			batcher.begin(0, 0, 0);
@@ -640,6 +657,7 @@ public class BoMScreen extends Screen {
 			return true;
 		}
 		zoom += (int) amount;
+		batcherCamera = stackCamera;
 		return true;
 	}
 
@@ -679,7 +697,7 @@ public class BoMScreen extends Screen {
 		}
 
 		public void render(EmiDrawContext context, List<AmountRenderInfo> amounts) {
-			if (stackCamera.overlaps(x, y, 16, 16) || !batcher.isPopulated()) {
+			if (stackCamera.overlaps(x, y, 16, 16) || !batcher.isPopulated() && batcherCamera.overlaps(x, y, 16, 16)) {
 				batcher.render(cost.ingredient, context.raw(), x, y, 0, ~(EmiIngredient.RENDER_AMOUNT | EmiIngredient.RENDER_REMAINDER));
 			}
 
@@ -806,7 +824,7 @@ public class BoMScreen extends Screen {
 			// xo = 0 or 11
 			// raw number ranges from -18 to +3, delta 21, meaning width is 16 + 21 = 37
 			boolean doStackRender = stackCamera.overlaps(x - 18 + midOffset, y - 8, 37, 16)
-					|| !batcher.isPopulated();
+					|| !batcher.isPopulated() && batcherCamera.overlaps(x - 18 + midOffset, y - 8, 37, 16);
 			if (!doRender && !doStackRender) {
 				return;
 			}

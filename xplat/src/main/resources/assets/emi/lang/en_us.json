@@ -177,6 +177,7 @@
   "config.emi.dev.highlight_defaulted": "Highlight Defaulted",
   "config.emi.dev.highlight_exclusion_areas": "Highlight Exclusion Areas",
   "config.emi.dev.recipe_tree_bounding_boxes": "Recipe Tree Bounding Boxes",
+  "config.emi.dev.batcher_camera_expand_percentage": "Batcher Camera Expand Percentage",
 
   "config.emi.presets.sidebars": "Sidebars",
   "config.emi.presets.binds": "Binds",
