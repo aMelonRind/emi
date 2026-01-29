@@ -68,6 +68,8 @@ public class BoMScreen extends Screen {
 	private Bounds batches = new Bounds(-24, -50, 48, 26);
 	private Bounds mode = new Bounds(-24, -50, 16, 16);
 	private Bounds help = new Bounds(0, 0, 16, 16);
+	// treat this as the tree's offset relative to the camera,
+	// not vise versa, which made me confused for a while.
 	private double offX, offY;
 	private List<Node> nodes = Lists.newArrayList();
 	private List<Cost> costs = Lists.newArrayList();
@@ -214,10 +216,10 @@ public class BoMScreen extends Screen {
 		int my = (int) ((mouseY - height / 2) / scale - offY);
 
 		Bounds scaledScreenBounds = new Bounds(
-				-(scaledWidth / 2) - (int) offX,
-				-(scaledHeight / 2) - (int) offY,
-				scaledWidth,
-				scaledHeight
+				-(scaledWidth / 2) - (int) offX - 32,
+				-(scaledHeight / 2) - (int) offY - 32,
+				scaledWidth + 64,
+				scaledHeight + 64
 		);
 
 		MatrixStack view = RenderSystem.getModelViewStack();
