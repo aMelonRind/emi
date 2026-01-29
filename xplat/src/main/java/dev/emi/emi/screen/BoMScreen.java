@@ -240,7 +240,7 @@ public class BoMScreen extends Screen {
 				cost.render(context, amounts);
 			}
 			for (Node node : nodes) {
-				if (shouldFullRenderNodes || !node.getBoundingBox().overlap(scaledScreenBounds).empty()) {
+				if (shouldFullRenderNodes || node.getBoundingBox().overlaps(scaledScreenBounds)) {
 					node.render(context, mx, my, delta, amounts);
 					if (EmiConfig.recipeTreeBoundingBoxes) {
 						node.renderBoundingBox(context);

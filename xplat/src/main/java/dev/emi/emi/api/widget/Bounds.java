@@ -37,4 +37,12 @@ public record Bounds(int x, int y, int width, int height) {
 		);
 		return b;
 	}
+
+	public boolean overlaps(Bounds another) {
+		return overlaps(another.x(), another.y(), another.width(), another.height());
+	}
+
+	public boolean overlaps(int x, int y, int w, int h) {
+		return x + w > this.left() && x < this.right() && y + h > this.top() && y < this.bottom();
+	}
 }
