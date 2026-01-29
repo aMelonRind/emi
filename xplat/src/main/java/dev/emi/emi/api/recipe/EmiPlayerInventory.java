@@ -1,5 +1,6 @@
 package dev.emi.emi.api.recipe;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -25,6 +26,7 @@ import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiFavorite;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
@@ -36,10 +38,12 @@ public class EmiPlayerInventory {
 	private final Comparison none = Comparison.DEFAULT_COMPARISON;
 	private final Comparison strict = EmiPort.compareStrict();
 	public Map<EmiStack, EmiStack> inventory = Maps.newHashMap();
-	
+	public Map<EmiRecipeCategory, Map<EmiStack, EmiStack>> extraCraftableInventory = new Object2ObjectOpenHashMap();
+
 	@Deprecated
 	@ApiStatus.Internal
 	public EmiPlayerInventory(PlayerEntity entity) {
+		((Object2ObjectOpenHashMap) extraCraftableInventory).defaultReturnValue(inventory);
 		HandledScreen<?> screen = EmiApi.getHandledScreen();
 		if (screen != null && screen.getScreenHandler() != null) {
 			if (screen.getScreenHandler().getCursorStack() != null) {
@@ -66,6 +70,7 @@ public class EmiPlayerInventory {
 	}
 
 	public EmiPlayerInventory(List<EmiStack> stacks) {
+		((Object2ObjectOpenHashMap) extraCraftableInventory).defaultReturnValue(inventory);
 		for (EmiStack stack : stacks) {
 			addStack(stack);
 		}
@@ -102,6 +107,25 @@ public class EmiPlayerInventory {
 		}
 	}
 
+	public void addExtraCraftableStack(EmiRecipeCategory category, Collection<EmiStack> stacks) {
+		if (!stacks.isEmpty()) {
+			Map<EmiStack, EmiStack> map = extraCraftableInventory.get(category);
+			if (map == inventory) {
+				map = Maps.newHashMap();
+				for (EmiStack s : inventory.keySet()) {
+					EmiStack copy = s.copy();
+					map.put(copy, copy);
+				}
+				extraCraftableInventory.put(category, map);
+			}
+			for (EmiStack stack : stacks) {
+				if (!stack.isEmpty()) {
+					map.merge(stack, stack, (a, b) -> a.setAmount(a.getAmount() + b.getAmount()));
+				}
+			}
+		}
+	}
+
 	public Predicate<EmiRecipe> getPredicate() {
 		HandledScreen screen = EmiApi.getHandledScreen();
 		List<EmiRecipeHandler> handlers = EmiRecipeFiller.getAllHandlers(screen);
@@ -126,7 +150,7 @@ public class EmiPlayerInventory {
 			return List.of();
 		}
 		Set<EmiRecipe> set = Sets.newHashSet();
-		for (EmiStack stack : inventory.keySet()) {
+		for (EmiStack stack : extraCraftableInventory.get(VanillaEmiRecipeCategories.CRAFTING).keySet()) {
 			set.addAll(EmiApi.getRecipeManager().getRecipesByInput(stack));
 		}
 		return set.stream().filter(r -> !r.hideCraftable() && predicate.test(r) && r.getOutputs().size() > 0)
@@ -144,13 +168,14 @@ public class EmiPlayerInventory {
 
 	public List<Boolean> getCraftAvailability(EmiRecipe recipe) {
 		Object2LongMap<EmiStack> used = new Object2LongOpenHashMap<>();
+		Map<EmiStack, EmiStack> inv = extraCraftableInventory.get(recipe.getCategory());
 		List<Boolean> states = Lists.newArrayList();
 		outer:
 		for (EmiIngredient ingredient : recipe.getInputs()) {
 			for (EmiStack stack : ingredient.getEmiStacks()) {
 				long desired = stack.getAmount();
-				if (inventory.containsKey(stack)) {
-					EmiStack identity = inventory.get(stack);
+				if (inv.containsKey(stack)) {
+					EmiStack identity = inv.get(stack);
 					long alreadyUsed = used.getOrDefault(identity, 0);
 					long available = identity.getAmount() - alreadyUsed;
 					if (available >= desired) {
@@ -171,6 +196,7 @@ public class EmiPlayerInventory {
 
 	public boolean canCraft(EmiRecipe recipe, long amount) {
 		Object2LongMap<EmiStack> used = new Object2LongOpenHashMap<>();
+		Map<EmiStack, EmiStack> inv = extraCraftableInventory.get(recipe.getCategory());
 		outer:
 		for (EmiIngredient ingredient : recipe.getInputs()) {
 			if (ingredient.isEmpty()) {
@@ -178,8 +204,8 @@ public class EmiPlayerInventory {
 			}
 			for (EmiStack stack : ingredient.getEmiStacks()) {
 				long desired = stack.getAmount() * amount;
-				if (inventory.containsKey(stack)) {
-					EmiStack identity = inventory.get(stack);
+				if (inv.containsKey(stack)) {
+					EmiStack identity = inv.get(stack);
 					long alreadyUsed = used.getOrDefault(identity, 0);
 					long available = identity.getAmount() - alreadyUsed;
 					if (available >= desired) {
@@ -200,11 +226,28 @@ public class EmiPlayerInventory {
 		Comparison comparison = Comparison.of((a, b) -> {
 			return strict.compare(a, b) && a.getAmount() == b.getAmount();
 		});
-		if (other.inventory.size() != inventory.size()) {
+		if (!isContentEqual(inventory, other.inventory, comparison)) {
+			return false;
+		}
+		if (other.extraCraftableInventory.size() != extraCraftableInventory.size()) {
 			return false;
 		} else {
-			for (EmiStack stack : inventory.keySet()) {
-				if (!other.inventory.containsKey(stack) || !other.inventory.get(stack).isEqual(stack, comparison)) {
+			for (Map.Entry<EmiRecipeCategory, Map<EmiStack, EmiStack>> entry : extraCraftableInventory.entrySet()) {
+				if (!other.extraCraftableInventory.containsKey(entry.getKey()) || !isContentEqual(entry.getValue(), other.extraCraftableInventory.get(entry.getKey()), comparison)) {
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
+	@SuppressWarnings("BooleanMethodIsAlwaysInverted")
+    private static boolean isContentEqual(Map<EmiStack, EmiStack> a, Map<EmiStack, EmiStack> b, Comparison comparison) {
+		if (a.size() != b.size()) {
+			return false;
+		} else {
+			for (EmiStack stack : a.keySet()) {
+				if (!b.containsKey(stack) || !b.get(stack).isEqual(stack, comparison)) {
 					return false;
 				}
 			}
