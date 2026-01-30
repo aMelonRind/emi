@@ -127,11 +127,12 @@ public class BoMScreen extends Screen {
 			int horizontalOffset = (volume.getMaxRight() + volume.getMinLeft()) / 2;
 			for (Node node : volume.nodes) {
 				node.x -= horizontalOffset;
-				if (node.x < leftBound) {
-					leftBound = node.x;
+				int halfW = node.width / 2;
+				if (node.x - halfW < leftBound) {
+					leftBound = node.x - halfW;
 				}
-				if (node.x + node.width > rightBound) {
-					rightBound = node.x + node.width;
+				if (node.x + halfW > rightBound) {
+					rightBound = node.x + halfW;
 				}
 			}
 			if (!volume.nodes.isEmpty()) {
