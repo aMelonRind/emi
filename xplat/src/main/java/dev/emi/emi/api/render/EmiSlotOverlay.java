@@ -64,6 +64,12 @@ public class EmiSlotOverlay {
     private static final Map<ScreenHandlerType<?>, Predicate<Slot>> rules = new HashMap<>();
     private static final Map<ScreenHandlerType<?>, List<Consumer<?>>> listeners = new HashMap<>();
 
+    @ApiStatus.Internal
+    public static void clear() {
+        rules.clear();
+        listeners.clear();
+    }
+
     /**
      * Adds a render rule to a specified type of screen handler.
      * Use this to limit the default rendering behavior.
