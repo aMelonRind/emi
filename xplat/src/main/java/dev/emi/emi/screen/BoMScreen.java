@@ -112,8 +112,8 @@ public class BoMScreen extends Screen {
 		recalculateTree();
 		Runnable focus = this.focuser;
 		if (focus != null) {
-			focus.run();
 			this.focuser = null;
+			focus.run();
 		}
 	}
 
@@ -617,12 +617,14 @@ public class BoMScreen extends Screen {
 					}
 				}
 				recalculateTree();
+				hover.focus();
 				return true;
 			}
 			if (hover.stack != null) {
 				if (EmiInput.isShiftDown() && button == 0) {
 					if (getAutoResolutions(hover, BoM.tree::addResolution)) {
 						recalculateTree();
+						hover.focus();
 					}
 					return true;
 				} else {
@@ -831,7 +833,6 @@ public class BoMScreen extends Screen {
 			double oy = cameraY;
 			int cy = nodeHeight * NODE_VERTICAL_SPACING * 2;
 			focuser = () -> {
-				EmiLog.info("Focusing to Costs");
 				cameraX = ox;
 				cameraY = oy - cy + nodeHeight * NODE_VERTICAL_SPACING * 2;
 			};
@@ -857,14 +858,12 @@ public class BoMScreen extends Screen {
 					}
 					index--;
 					if (index == -1) {
-						EmiLog.info("Focusing to Node");
 						cameraX = ox - node.x + current.x;
 						cameraY = oy - node.y + current.y;
 						return;
 					}
 					n = current;
 				}
-				EmiLog.info("Fallback focusing to Costs");
 				// fallback, same logic as Cost
 				cameraX = ox;
 				cameraY = oy - cy + nodeHeight * NODE_VERTICAL_SPACING * 2;
@@ -874,6 +873,12 @@ public class BoMScreen extends Screen {
 
 		public void bindFocuser(BoMScreen screen) {
 			screen.focuser = this.focuser;
+		}
+
+		public void focus() {
+			if (this.focuser != null) {
+				this.focuser.run();
+			}
 		}
 	}
 
