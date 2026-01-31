@@ -1,8 +1,6 @@
 package dev.emi.emi.screen;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -72,6 +70,7 @@ public class BoMScreen extends Screen {
 	private static StackBatcher batcher = new StackBatcher();
 	private static int zoom = 0;
 	private Bounds batches = new Bounds(-24, -50, 48, 26);
+	private Bounds save = new Bounds(-24, -50, 16, 16);
 	private Bounds mode = new Bounds(-24, -50, 16, 16);
 	private Bounds help = new Bounds(0, 0, 16, 16);
 	private double cameraX, cameraY;
@@ -79,7 +78,12 @@ public class BoMScreen extends Screen {
 	private List<Node> nodes = Lists.newArrayList();
 	private List<Cost> costs = Lists.newArrayList();
 	private EmiPlayerInventory playerInv;
-	private boolean hasRemainders = false;;
+	private boolean hasRemainders = false;
+	private Map<EmiIngredient, EmiRecipe> noDefault = new HashMap<>();
+	private Map<EmiIngredient, EmiRecipe> differentDefault = new HashMap<>();
+	private boolean shouldRenderSave = false;
+	private boolean isHoldingShift = false;
+	private int savedDefaults = 0;
 	public HandledScreen<?> old;
 	private int nodeHeight = 0;
 	private int leftBound, rightBound;
@@ -121,6 +125,8 @@ public class BoMScreen extends Screen {
 		help = new Bounds(width - 18, height - 18, 16, 16);
 		leftBound = 0;
 		rightBound = 0;
+		noDefault.clear();
+		differentDefault.clear();
 		if (BoM.tree != null) {
 			TreeVolume volume = addNewNodes(BoM.tree.goal, BoM.tree.batches, 1, 0, ChanceState.DEFAULT);
 			nodes = volume.nodes;
@@ -139,6 +145,35 @@ public class BoMScreen extends Screen {
 				Node node = volume.nodes.get(0);
 				int width = textRenderer.getWidth("x" + BoM.tree.batches);
 				batches = new Bounds(node.x + node.width / 2 + 6, node.y - 10, width + 12, 22);
+			}
+
+			Map<EmiIngredient, EmiRecipe> noDefault = new HashMap<>();
+			Map<EmiIngredient, EmiRecipe> differentDefault = new HashMap<>();
+			for (Map.Entry<EmiIngredient, EmiRecipe> entry : BoM.tree.resolutions.entrySet()) {
+				if (entry.getValue() == null) {
+					continue;
+				}
+
+				EmiRecipe def = BoM.getRecipe(entry.getKey());
+				if (entry.getValue().equals(def)) {
+					continue;
+				}
+				if (def == null) {
+					noDefault.put(entry.getKey(), entry.getValue());
+				} else {
+					differentDefault.put(entry.getKey(), entry.getValue());
+				}
+			}
+
+			if (!noDefault.isEmpty() || !differentDefault.isEmpty()) {
+				scanUnsavedDefaults(BoM.tree.goal, noDefault, differentDefault);
+				if (!this.noDefault.isEmpty() || !this.differentDefault.isEmpty()) {
+					savedDefaults = 0;
+					for (Node node : nodes) {
+						node.isNoDef = this.noDefault.containsKey(node.node.ingredient);
+						node.isDiffDef = this.differentDefault.containsKey(node.node.ingredient);
+					}
+				}
 			}
 
 			nodeHeight = getNodeHeight(BoM.tree.goal);
@@ -195,6 +230,7 @@ public class BoMScreen extends Screen {
 			}
 
 			int totalCostWidth = textRenderer.getWidth(EmiPort.translatable("emi.total_cost"));
+			save = new Bounds(-totalCostWidth / 2 - 4 - 16, cy - 20, 16, 16);
 			mode = new Bounds(totalCostWidth / 2 + 4, cy - 20, 16, 16);
 
 			List<Cost> remainders = Lists.newArrayList();
@@ -235,6 +271,38 @@ public class BoMScreen extends Screen {
 		}
 		CachedText.invalidate();
 		batcher.repopulate();
+	}
+
+	private boolean scanUnsavedDefaults(MaterialNode node, Map<EmiIngredient, EmiRecipe> noDefault, Map<EmiIngredient, EmiRecipe> differentDefault) {
+		if (node.recipe == null) {
+			return false;
+		}
+
+		EmiRecipe recipe = noDefault.remove(node.ingredient);
+		if (recipe != null) {
+			this.noDefault.put(node.ingredient, recipe);
+			if (noDefault.isEmpty() && differentDefault.isEmpty()) {
+				return true;
+			}
+		} else {
+			recipe = differentDefault.remove(node.ingredient);
+			if (recipe != null) {
+				this.differentDefault.put(node.ingredient, recipe);
+				if (differentDefault.isEmpty() && noDefault.isEmpty()) {
+					return true;
+				}
+			}
+		}
+
+		if (!node.children.isEmpty()) {
+			for (MaterialNode child : node.children) {
+				if (scanUnsavedDefaults(child, noDefault, differentDefault)) {
+					return true;
+				}
+			}
+		}
+
+		return false;
 	}
 
 	@Override
@@ -348,6 +416,9 @@ public class BoMScreen extends Screen {
 		}
 
 		if (BoM.tree != null) {
+			shouldRenderSave = save.contains(mx, my) && (!noDefault.isEmpty() || !differentDefault.isEmpty());
+			isHoldingShift = EmiInput.isShiftDown();
+
 			batcher.begin(0, 0, 0);
 			int cy = nodeHeight * NODE_VERTICAL_SPACING * 2;
 			context.drawCenteredText(EmiPort.translatable("emi.total_cost"), 0, cy - 16);
@@ -372,6 +443,19 @@ public class BoMScreen extends Screen {
 				context.setColor(0.5f, 0.6f, 1f, 1f);
 			}
 			context.drawTexture(EmiRenderHelper.WIDGETS, mode.x(), mode.y(), BoM.craftingMode ? 16 : 0, 146, mode.width(), mode.height());
+
+			if (!noDefault.isEmpty() || !differentDefault.isEmpty() || savedDefaults > 0) {
+				if (savedDefaults > 0) {
+					context.setColor(0.5f, 0.5f, 0.5f, 1f);
+				} else if (save.contains(mx, my)) {
+					context.setColor(0.5f, 0.6f, 1f, 1f);
+				} else {
+					context.setColor(1f, 1f, 1f, 1f);
+				}
+				// no texture - borrowing the star
+				context.drawTexture(EmiRenderHelper.WIDGETS, save.x(), save.y(), 32, 146, save.width(), save.height());
+			}
+
 			context.setColor(1f, 1f, 1f, 1f);
 			batcher.draw();
 
@@ -389,6 +473,7 @@ public class BoMScreen extends Screen {
 			}
 			context.pop();
 		} else {
+			shouldRenderSave = false;
 			context.drawCenteredText(EmiPort.translatable("emi.tree_welcome", EmiRenderHelper.getEmiText()), 0, -72);
 			context.drawCenteredText(EmiPort.translatable("emi.no_tree"), 0, -48);
 			context.drawCenteredText(EmiPort.translatable("emi.random_tree"), 0, -24);
@@ -412,6 +497,28 @@ public class BoMScreen extends Screen {
 			list.addAll(EmiTooltip.splitTranslate("tooltip.emi.bom.batch_size", BoM.tree.batches));
 			list.add(EmiTooltipComponents.of(EmiPort.translatable("tooltip.emi.bom.batch_size.ideal", EmiBind.LEFT_CLICK.getBindText())));
 			EmiRenderHelper.drawTooltip(this, context, list, mouseX, mouseY);
+		} else if (BoM.tree != null && save.contains(mx, my)) {
+			int noDs = noDefault.size();
+			int difDs = differentDefault.size();
+			if (noDs + difDs > 0 || savedDefaults > 0) {
+				String key;
+				Integer[] args = null;
+				if (savedDefaults > 0) {
+					key = "tooltip.emi.bom.save.saved";
+					args = new Integer[]{savedDefaults};
+				} else if (noDs > 0 && difDs == 0) {
+					key = "tooltip.emi.bom.save.normal";
+					args = new Integer[]{noDs};
+				} else if (noDs > 0 && difDs > 0) {
+					key = EmiInput.isShiftDown() ? "tooltip.emi.bom.save.hint_override.confirm" : "tooltip.emi.bom.save.hint_override";
+					args = new Integer[]{noDs, difDs};
+				} else { // if (noDs == 0 && difDs > 0)
+					key = EmiInput.isShiftDown() ? "tooltip.emi.bom.save.override_only.confirm" : "tooltip.emi.bom.save.override_only";
+					args = new Integer[]{difDs};
+				}
+				List<TooltipComponent> list = EmiTooltip.splitTranslate(key, args);
+				EmiRenderHelper.drawTooltip(this, context, list, mouseX, mouseY);
+			}
 		} else if (BoM.tree != null && mode.contains(mx, my)) {
 			String key = BoM.craftingMode ? "tooltip.emi.bom.mode.craft" : "tooltip.emi.bom.mode.view";
 			List<TooltipComponent> list = EmiTooltip.splitTranslate(key, BoM.tree.batches);
@@ -645,7 +752,21 @@ public class BoMScreen extends Screen {
 					}
 				}
 			}
-		} else if (mode.contains(mx, my)) {
+		} else if (save.contains(mx, my) && BoM.tree != null && (!noDefault.isEmpty() || EmiInput.isShiftDown() && !differentDefault.isEmpty())) {
+			MinecraftClient.getInstance().getSoundManager().play(PositionedSoundInstance.master(SoundEvents.UI_BUTTON_CLICK, 1.0f));
+			for (Map.Entry<EmiIngredient, EmiRecipe> entry : noDefault.entrySet()) {
+				BoM.addRecipe(entry.getKey(), entry.getValue());
+			}
+			savedDefaults += noDefault.size();
+			if (EmiInput.isShiftDown()) {
+				for (Map.Entry<EmiIngredient, EmiRecipe> entry : differentDefault.entrySet()) {
+					BoM.addRecipe(entry.getKey(), entry.getValue());
+				}
+				savedDefaults += differentDefault.size();
+			}
+			// maps will be cleared in calculate
+			recalculateTree();
+		} else if (mode.contains(mx, my) && BoM.tree != null) {
 			MinecraftClient.getInstance().getSoundManager().play(PositionedSoundInstance.master(SoundEvents.UI_BUTTON_CLICK, 1.0f));
 			BoM.craftingMode = !BoM.craftingMode;
 			recalculateTree();
@@ -890,6 +1011,8 @@ public class BoMScreen extends Screen {
 		public long amount;
 		public ChanceState chance;
 		private CachedText textCache = new CachedText();
+		public boolean isNoDef = false;
+		public boolean isDiffDef = false;
 
 		public Node(MaterialNode node, long amount, int x, int y, ChanceState chance) {
 			this.node = node;
@@ -959,7 +1082,11 @@ public class BoMScreen extends Screen {
 				}
 
 				boolean hovered = mouseX >= lx && mouseY >= ly && mouseX <= hx && mouseY <= hy;
-				setColor(context, node, node.produceChance != 1, hovered);
+				if (shouldRenderSave && (isNoDef || isHoldingShift && isDiffDef)) {
+					context.setColor(0.0f, 1.0f, 0.0f);
+				} else {
+					setColor(context, node, node.produceChance != 1, hovered);
+				}
 				if (doRender) {
 					drawVerticalLine(context, lx, ly, hy);
 					drawVerticalLine(context, hx, ly, hy);
