@@ -9,6 +9,7 @@ import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.EmiRecipeCategory;
 import dev.emi.emi.config.EmiConfig;
 import dev.emi.emi.config.SidebarSide;
+import dev.emi.emi.registry.GTTierSort;
 
 public class RecipeTab {
 	private static final int RECIPE_PADDING = 10;
@@ -19,6 +20,9 @@ public class RecipeTab {
 
 	public RecipeTab(EmiRecipeCategory category, List<EmiRecipe> recipes) {
 		this.category = category;
+		if (!GTTierSort.isSorted(recipes)) {
+			recipes = GTTierSort.sortLowTierFirst(recipes);
+		}
 		displays = recipes.stream().map(r -> {
 			try {
 				return new RecipeDisplay(r);

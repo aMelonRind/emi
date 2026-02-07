@@ -87,6 +87,10 @@ public class MeloRecipeSorter {
                 .map(Holder::getRecipe)
                 .toList();
 
+        if (GTTierSort.isGtRecipe(input.get(0))) {
+            result = GTTierSort.sortLowTierFirst(result);
+        }
+
         // it adds around 66% of baking search time impact, I think it's worth it since it's sorted.
         long time = System.currentTimeMillis() - startTime;
         totalTime += time;
