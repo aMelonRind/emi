@@ -1,8 +1,11 @@
 package dev.emi.emi.runtime;
 
 import java.util.AbstractList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -23,9 +26,7 @@ import dev.emi.emi.bom.BoM;
 import dev.emi.emi.bom.ChanceMaterialCost;
 import dev.emi.emi.bom.FlatMaterialCost;
 import dev.emi.emi.bom.MaterialNode;
-import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import net.minecraft.util.Identifier;
+
 import net.minecraft.util.JsonHelper;
 
 public class EmiFavorites {
@@ -195,21 +196,21 @@ public class EmiFavorites {
 			BoM.tree.calculateCost();
 			Map<EmiIngredient, FlatMaterialCost> originalCosts = Maps.newHashMap(BoM.tree.cost.costs);
 			Map<EmiIngredient, ChanceMaterialCost> chancedCosts = Maps.newHashMap(BoM.tree.cost.chanceCosts);
-			Object2LongMap<EmiRecipe> originalBatches = new Object2LongLinkedOpenHashMap<>();
-			Object2LongMap<EmiRecipe> originalAmounts = new Object2LongLinkedOpenHashMap<>();
+			Map<EmiIngredient, CountEntry> originalCounts = new HashMap<>();
+			Map<EmiIngredient, CountEntry> counts = new HashMap<>();
 			EmiPlayerInventory emptyInventory = new EmiPlayerInventory(List.of());
 			emptyInventory.inventory.clear();
 			BoM.tree.calculateProgress(emptyInventory);
-			countRecipes(originalBatches, originalAmounts, BoM.tree.goal);
+			countRecipes(originalCounts, BoM.tree.goal, 0);
 			BoM.tree.calculateProgress(inv);
-			Object2LongMap<EmiRecipe> batches = new Object2LongLinkedOpenHashMap<>();
-			Object2LongMap<EmiRecipe> amounts = new Object2LongLinkedOpenHashMap<>();
-			countRecipes(batches, amounts, BoM.tree.goal);
+			countRecipes(counts, BoM.tree.goal, 0);
 			boolean hasSomething = false;
-			for (Object2LongMap.Entry<EmiRecipe> entry : batches.object2LongEntrySet()) {
-				EmiRecipe recipe = entry.getKey();
-				long amount = amounts.getOrDefault(recipe, 0);
-				long batch = entry.getLongValue();
+			List<CountEntry> entries = counts.values().stream()
+					.sorted(Comparator.comparingInt(e -> e.depth)).toList();
+			for (CountEntry entry : entries) {
+				EmiRecipe recipe = entry.recipe;
+				long amount = entry.amount;
+				long batch = entry.batch;
 				if (amount == 0) {
 					continue;
 				}
@@ -220,7 +221,10 @@ public class EmiFavorites {
 				} else if (inv.canCraft(recipe)) {
 					state = 1;
 				}
-				syntheticFavorites.add(new EmiFavorite.Synthetic(recipe, batch, amount, originalAmounts.getOrDefault(recipe, amount), state));
+				long origAmount = Optional.ofNullable(originalCounts.get(entry.stack))
+						.map(e -> e.amount)
+						.orElse(amount);
+				syntheticFavorites.add(new EmiFavorite.Synthetic(entry.stack, recipe, batch, amount, origAmount, state));
 			}
 			if (!hasSomething) {
 				BoM.craftingMode = false;
@@ -247,29 +251,25 @@ public class EmiFavorites {
 		}
 	}
 
-	public static void countRecipes(Object2LongMap<EmiRecipe> batches, Object2LongMap<EmiRecipe> amounts, MaterialNode node) {
-		if (node.recipe instanceof EmiResolutionRecipe recipe) {
-			countRecipes(batches, amounts, node.children.get(0));
+	public static void countRecipes(Map<EmiIngredient, CountEntry> counts, MaterialNode node, int depth) {
+		if (node.recipe instanceof EmiResolutionRecipe) {
+			assert node.children != null;
+			countRecipes(counts, node.children.get(0), depth);
 			return;
 		}
 		// Include empty costs for proper sorting
 		if (node.recipe != null) {
-			long amount = node.neededBatches;
-			if (batches.containsKey(node.recipe)) {
-				// Remove?
-				amount += batches.getLong(node.recipe);
-				batches.removeLong(node.recipe);
+			assert node.children != null;
+			CountEntry entry = counts.computeIfAbsent(node.ingredient, k -> new CountEntry(k, node.recipe));
+			if (depth > entry.depth) {
+				entry.depth = depth;
 			}
-			batches.put(node.recipe, amount);
-			amount = node.totalNeeded + node.usedRemainder;
-			if (amounts.containsKey(node.recipe)) {
-				// Remove?
-				amount += amounts.getLong(node.recipe);
-				amounts.removeLong(node.recipe);
-			}
-			amounts.put(node.recipe, amount);
+			entry.batch += node.neededBatches;
+			entry.amount += node.totalNeeded + node.usedRemainder;
+
+			depth++;
 			for (MaterialNode child : node.children) {
-				countRecipes(batches, amounts, child);
+				countRecipes(counts, child, depth);
 			}
 		}
 	}
@@ -293,6 +293,19 @@ public class EmiFavorites {
 		@Override
 		public int size() {
 			return a.size() + b.size();
+		}
+	}
+
+	public static class CountEntry {
+		public final EmiIngredient stack;
+		public final EmiRecipe recipe;
+		public long batch;
+		public long amount;
+		public int depth;
+
+		public CountEntry(EmiIngredient stack, EmiRecipe recipe) {
+			this.stack = stack;
+			this.recipe = recipe;
 		}
 	}
 }

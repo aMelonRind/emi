@@ -157,8 +157,8 @@ public class EmiFavorite implements EmiIngredient, Batchable {
 		public final int state;
 		public final long total;
 
-		public Synthetic(EmiRecipe recipe, long batches, long amount, long total, int state) {
-			super(recipe.getOutputs().get(0), recipe);
+		public Synthetic(EmiIngredient stack, EmiRecipe recipe, long batches, long amount, long total, int state) {
+			super(stack, recipe);
 			this.batches = batches;
 			this.amount = amount;
 			this.total = total;
