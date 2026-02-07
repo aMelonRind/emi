@@ -24,6 +24,7 @@ import dev.emi.emi.screen.tooltip.RecipeTooltipComponent;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.tooltip.TooltipComponent;
 import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.fluid.Fluid;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
@@ -197,6 +198,7 @@ public class EmiFavorite implements EmiIngredient, Batchable {
 
 			long diff = total - amount;
 			list.add(EmiTooltipComponents.of(EmiPort.translatable("tooltip.emi.synfav.remaining", EmiRenderHelper.getAmountText(stack, amount, true)).formatted(Formatting.GRAY)));
+			appendCountHelper(list, amount, stack.getEmiStacks().get(0).getItemStack().getMaxCount(), stack.getEmiStacks().get(0).getKey() instanceof Fluid);
 			list.add(EmiTooltipComponents.of(EmiPort.translatable("tooltip.emi.synfav.obtained", EmiRenderHelper.getAmountText(stack, diff, true), EmiRenderHelper.getAmountText(stack, total, true)).formatted(Formatting.GRAY)));
 			if (batches != amount) {
 				list.add(EmiTooltipComponents.of(EmiPort.translatable("tooltip.emi.synfav.batches_remaining", batches).formatted(Formatting.GRAY)));
@@ -229,6 +231,44 @@ public class EmiFavorite implements EmiIngredient, Batchable {
 				}
 			}
 			return list;
+		}
+
+		private static void appendCountHelper(List<TooltipComponent> tooltip, long count, int maxCount, boolean isFluid) {
+			if (!isFluid) {
+				if (count > maxCount) {
+					String str = EmiRenderHelper.TEXT_FORMAT.format(count / maxCount)
+							+ "x" + EmiRenderHelper.TEXT_FORMAT.format(maxCount);
+					if (count % maxCount != 0) {
+						str += " + " + count % maxCount;
+					}
+					tooltip.add(EmiTooltipComponents.of(Text.literal(str).formatted(Formatting.GRAY)));
+				}
+				return;
+			}
+			if (count > 144 && count % 72 == 0) {
+				long ingots = count / 144;
+				String str;
+				if (ingots > 64) {
+					str = EmiRenderHelper.TEXT_FORMAT.format(ingots / 64) + "x64";
+					if (ingots % 64 != 0) {
+						str = "(" + str + " + " + ingots % 64 + ")";
+					}
+					str += "x144";
+				} else {
+					str = ingots + "x144";
+				}
+				if (count % 144 != 0) {
+					str += " + " + count % 144;
+				}
+				tooltip.add(EmiTooltipComponents.of(Text.literal(str).formatted(Formatting.GRAY)));
+			}
+			if (count >= 65000 && count % 50 == 0) {
+				String str = EmiRenderHelper.TEXT_FORMAT.format(count / 64000) + "x64,000";
+				if (count % 64000 != 0) {
+					str += " + " + EmiRenderHelper.TEXT_FORMAT.format(count % 64000);
+				}
+				tooltip.add(EmiTooltipComponents.of(Text.literal(str).formatted(Formatting.GRAY)));
+			}
 		}
 
 		@Override
